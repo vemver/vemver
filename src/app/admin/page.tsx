@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../supabase"
 
-const ADMIN_EMAIL = "stanleyboiacg@gmail.com"
 
 export default function AdminPage() {
   const router = useRouter()
@@ -21,12 +20,18 @@ export default function AdminPage() {
     async function verificarAdmin() {
       const { data } = await supabase.auth.getUser()
       const email = data.user?.email
+      
+      const { data: adminData, error: adminError } = await supabase
+  .from("admins")
+  .select("id, email")
+  .eq("email", email)
+  .single()
 
-      if (email !== ADMIN_EMAIL) {
-        alert("Acesso negado. Área exclusiva para administrador.")
-        router.push("/login")
-        return
-      }
+if (adminError || !adminData) {
+  alert("Acesso negado. Área exclusiva para administrador.")
+  router.push("/login")
+  return
+}
 
       setAutorizado(true)
       setVerificandoAdmin(false)
