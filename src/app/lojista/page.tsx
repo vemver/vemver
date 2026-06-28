@@ -173,7 +173,7 @@ async function solicitarPlano(plano: string) {
 
            {podeCriarLoja ? (
   <a
-    href="/lojista/cadastrar-loja"
+   href="/cadastrar-loja"
     className="rounded-2xl bg-green-400 px-6 py-4 font-black text-black"
   >
     + Nova loja
@@ -224,7 +224,7 @@ async function solicitarPlano(plano: string) {
               </p>
 
               <a
-                href="/lojista/cadastrar-loja"
+                href="/cadastrar-loja"
                 className="mt-6 inline-block rounded-2xl bg-green-400 px-6 py-4 font-black text-black"
               >
                 Cadastrar minha primeira loja
