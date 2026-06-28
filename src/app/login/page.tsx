@@ -14,18 +14,11 @@ export default function LoginPage() {
     })
 
     if (error) {
-      alert("Erro no login")
-      console.log(error)
+      alert("Erro no login: " + error.message)
       return
     }
 
-    const { data: admin } = await supabase
-      .from("admins")
-      .select("*")
-      .eq("email", email)
-      .single()
-
-    if (admin) {
+    if (email === "vemverapp@gmail.com") {
       window.location.href = "/admin"
       return
     }
@@ -41,7 +34,6 @@ export default function LoginPage() {
 
     if (error) {
       alert(error.message)
-      console.log(error)
       return
     }
 
@@ -49,12 +41,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8">
+    <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900 p-8">
         <h1 className="text-4xl font-black">Entrar</h1>
 
         <p className="mt-2 text-zinc-400">
-          Faça login no VemVer
+          Acesse sua conta VemVer
         </p>
 
         <div className="mt-8 space-y-4">
@@ -62,7 +54,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Seu email"
-            className="w-full rounded-2xl bg-zinc-800 p-4 outline-none"
+            className="w-full rounded-2xl bg-black p-4 outline-none"
           />
 
           <input
@@ -70,19 +62,19 @@ export default function LoginPage() {
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
             placeholder="Sua senha"
-            className="w-full rounded-2xl bg-zinc-800 p-4 outline-none"
+            className="w-full rounded-2xl bg-black p-4 outline-none"
           />
 
           <button
             onClick={fazerLogin}
-            className="w-full rounded-2xl bg-green-400 py-4 font-bold text-black"
+            className="w-full rounded-2xl bg-green-400 py-4 font-black text-black"
           >
             Entrar
           </button>
 
           <button
             onClick={criarConta}
-            className="mt-3 w-full rounded-2xl border border-white/20 py-4 font-bold"
+            className="w-full rounded-2xl border border-white/20 py-4 font-bold"
           >
             Criar conta
           </button>

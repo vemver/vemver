@@ -48,9 +48,10 @@ export default function Home() {
   }
 
   async function carregarDados() {
-    const { data: lojasData, error: lojasError } = await supabase
-      .from("lojas")
-      .select("*");
+   const { data: lojasData, error: lojasError } = await supabase
+  .from("lojas")
+  .select("*")
+  .eq("status", "aprovada");
 
     if (lojasError) {
       console.log(lojasError);
@@ -120,9 +121,12 @@ export default function Home() {
         normalizar(loja.descricao || "").includes(buscaNormalizada)
       );
     })
-    .sort((a, b) => {
-      if (a.premium && !b.premium) return -1;
-      if (!a.premium && b.premium) return 1;
+   .sort((a, b) => {
+  if (a.patrocinado && !b.patrocinado) return -1
+  if (!a.patrocinado && b.patrocinado) return 1
+
+  if (a.premium && !b.premium) return -1
+  if (!a.premium && b.premium) return 1
 
       if (
         latitude &&
@@ -154,6 +158,33 @@ export default function Home() {
   const lojasPremium = lojasFiltradas.filter(
     (loja) => loja.premium === true
   );
+  const lojasPatrocinadas = lojasFiltradas.filter(
+  (loja) => loja.patrocinado === true
+);
+const produtosDestaque = produtos
+  .filter(
+    (produto) =>
+      produto.ativo === true &&
+      produto.destaque === true
+  )
+  .sort((a, b) => {
+    const lojaA = lojas.find(
+      (l) => Number(l.id) === Number(a.loja_id)
+    )
+
+    const lojaB = lojas.find(
+      (l) => Number(l.id) === Number(b.loja_id)
+    )
+
+    if (lojaA?.patrocinado && !lojaB?.patrocinado) return -1
+    if (!lojaA?.patrocinado && lojaB?.patrocinado) return 1
+
+    if (lojaA?.premium && !lojaB?.premium) return -1
+    if (!lojaA?.premium && lojaB?.premium) return 1
+
+    return 0
+  })
+  .slice(0, 6)
 
   const produtosFiltrados = produtos.filter((produto) => {
     const buscaNormalizada = normalizar(busca);
@@ -379,7 +410,97 @@ export default function Home() {
           </div>
         </section>
       )}
+{produtosDestaque.length > 0 && (
+  <section className="mx-auto max-w-7xl px-6 pb-16">
+    <div className="mb-8">
+      <h2 className="text-4xl font-black text-yellow-400">
+        ⭐ Produtos em Destaque
+      </h2>
 
+      <p className="mt-2 text-zinc-400">
+        Produtos patrocinados e em evidência no VemVer.
+      </p>
+    </div>
+
+    <div className="grid gap-6 md:grid-cols-3">
+      {produtosDestaque.map((produto) => {
+        const loja = lojas.find(
+          (l) => Number(l.id) === Number(produto.loja_id)
+        )
+
+        if (!loja) return null
+
+        return (
+          <div
+            key={produto.id}
+className={`rounded-3xl border-2 ${
+  loja?.patrocinado
+    ? "border-blue-500 shadow-lg shadow-blue-500/30"
+    : "border-yellow-400 shadow-lg shadow-yellow-400/30"
+} bg-gradient-to-br from-zinc-900 to-zinc-950 p-4`}
+>
+            {produto.imagem_url && (
+              <img
+                src={produto.imagem_url}
+                alt={produto.nome}
+                className="h-52 w-full rounded-2xl object-cover"
+              />
+            )}
+
+            {loja?.patrocinado ? (
+  <span className="mt-4 inline-block rounded-full bg-blue-500 px-3 py-1 text-sm font-black text-white">
+    🚀 PATROCINADO
+  </span>
+) : (
+  <span className="mt-4 inline-block rounded-full bg-yellow-400 px-3 py-1 text-sm font-black text-black">
+    ⭐ DESTAQUE
+  </span>
+)}
+
+            <h3 className="mt-4 text-2xl font-black">
+              {produto.nome}
+            </h3>
+
+            {produto.preco && (
+              <p className="mt-2 text-2xl font-black text-green-300">
+                R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+              </p>
+            )}
+
+            {produto.descricao && (
+              <p className="mt-3 text-zinc-400">
+                {produto.descricao}
+              </p>
+            )}
+
+            <p className="mt-4 text-sm text-zinc-500">
+              Vendido por:
+            </p>
+
+            <p className="font-black">
+              {loja.nome}
+            </p>
+
+            <button
+              onClick={() =>
+                (window.location.href = `/loja/${loja.id}-${loja.nome
+                  .toLowerCase()
+                  .replaceAll(" ", "-")}`)
+              }
+             className={`mt-5 w-full rounded-2xl py-4 font-black ${
+  loja?.patrocinado
+    ? "bg-blue-500 text-white"
+    : "bg-yellow-400 text-black"
+}`}
+            >
+              Ver loja
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  </section>
+)}
       <section className="mx-auto max-w-7xl px-6 py-20">
         <h2 className="mb-8 text-3xl font-black">
           Categorias populares
@@ -397,7 +518,53 @@ export default function Home() {
           ))}
         </div>
       </section>
+{lojasPatrocinadas.length > 0 && (
+  <section className="mx-auto max-w-7xl px-6 pb-16">
+    <div className="mb-8">
+      <h2 className="text-4xl font-black text-blue-400">
+        🚀 Lojas Patrocinadas
+      </h2>
 
+      <p className="mt-2 text-zinc-400">
+        Empresas que contrataram destaque máximo no VemVer.
+      </p>
+    </div>
+
+    <div className="grid gap-6 md:grid-cols-2">
+      {lojasPatrocinadas.map((loja) => (
+        <div
+          key={`patrocinada-${loja.id}`}
+          onClick={() => (window.location.href = criarSlugLoja(loja))}
+          className="cursor-pointer rounded-3xl border-2 border-blue-500 bg-gradient-to-br from-blue-500/10 to-zinc-900 p-8 transition hover:scale-[1.02]"
+        >
+          {loja.imagem_url && (
+            <img
+              src={loja.imagem_url}
+              alt={loja.nome}
+              className="h-60 w-full rounded-2xl object-cover"
+            />
+          )}
+
+          <span className="mt-6 inline-block rounded-full bg-blue-500 px-3 py-1 text-sm font-black text-white">
+            🚀 PATROCINADO
+          </span>
+
+          <h3 className="mt-4 text-3xl font-black">
+            {loja.nome}
+          </h3>
+
+          <p className="mt-2 text-zinc-400">
+            {loja.categoria}
+          </p>
+
+          <p className="mt-1 text-zinc-500">
+            📍 {loja.cidade}
+          </p>
+        </div>
+      ))}
+    </div>
+  </section>
+)}
       {lojasPremium.length > 0 && (
         <section className="mx-auto max-w-7xl px-6 pb-16">
           <div className="mb-8">
@@ -545,7 +712,11 @@ export default function Home() {
                     📌 {loja.endereco}
                   </p>
                 )}
-
+{loja.patrocinado && (
+  <span className="mt-3 inline-block rounded-full bg-blue-500 px-3 py-1 text-sm font-bold text-white">
+    🚀 PATROCINADO
+  </span>
+)}
                 {loja.premium && (
                   <span className="mt-3 inline-block rounded-full bg-yellow-400 px-3 py-1 text-sm font-bold text-black">
                     ⭐ PREMIUM

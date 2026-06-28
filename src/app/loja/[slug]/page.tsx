@@ -1,5 +1,6 @@
 import { supabase } from "../../supabase"
-
+import FavoritarLoja from "./FavoritarLoja"
+import AvaliarLoja from "./AvaliarLoja"
 export default async function LojaPage({
   params,
 }: {
@@ -57,29 +58,83 @@ export default async function LojaPage({
     )
   }
 
+  if (loja.ativo === false) {
+    return (
+      <main className="min-h-screen bg-black text-white p-8">
+        Esta loja está temporariamente indisponível.
+      </main>
+    )
+  }
+await supabase
+  .from("lojas")
+  .update({
+    visualizacoes: Number(loja.visualizacoes || 0) + 1,
+  })
+  .eq("id", loja.id)
   const { data: produtos } = await supabase
     .from("produtos")
     .select("*")
     .eq("loja_id", loja.id)
+    .eq("ativo", true)
+    .order("destaque", { ascending: false })
     .order("id", { ascending: false })
+
+  const { data: avaliacoes } = await supabase
+    .from("avaliacoes")
+    .select("*")
+    .eq("loja_id", loja.id)
+    .eq("aprovado", true)
+    .order("id", { ascending: false })
+
+  const totalAvaliacoes = avaliacoes?.length || 0
+
+  const mediaAvaliacoes =
+    totalAvaliacoes > 0
+      ? (
+          avaliacoes!.reduce(
+            (total, item) => total + Number(item.nota || 0),
+            0
+          ) / totalAvaliacoes
+        ).toFixed(1)
+      : "0.0"
 
   const instagramLimpo = loja.instagram?.replace("@", "")
 
   return (
     <main className="min-h-screen bg-black text-white px-6 py-10">
       <div className="mx-auto max-w-6xl">
-        {loja.imagem_url && (
+        {loja.imagem_url ? (
           <img
             src={loja.imagem_url}
             alt={loja.nome}
             className="h-[420px] w-full rounded-[2rem] object-cover shadow-2xl"
           />
+        ) : (
+          <div className="flex h-[320px] w-full items-center justify-center rounded-[2rem] border border-white/10 bg-zinc-900 text-zinc-500">
+            Loja sem imagem cadastrada
+          </div>
         )}
 
         <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <span className="rounded-full bg-green-400/10 px-4 py-2 text-sm font-bold text-green-300">
-            {loja.categoria}
-          </span>
+          <div className="flex flex-wrap gap-3">
+            {loja.categoria && (
+              <span className="rounded-full bg-green-400/10 px-4 py-2 text-sm font-bold text-green-300">
+                {loja.categoria}
+              </span>
+            )}
+
+            {loja.premium && (
+              <span className="rounded-full bg-yellow-400 px-4 py-2 text-sm font-black text-black">
+                ⭐ PREMIUM
+              </span>
+            )}
+
+            {totalAvaliacoes > 0 && (
+              <span className="rounded-full bg-yellow-400/10 px-4 py-2 text-sm font-black text-yellow-300">
+                ⭐ {mediaAvaliacoes} ({totalAvaliacoes} avaliações)
+              </span>
+            )}
+          </div>
 
           <h1 className="mt-6 text-5xl md:text-7xl font-black">
             {loja.nome}
@@ -91,13 +146,15 @@ export default async function LojaPage({
             </p>
           )}
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl border border-white/10 bg-black/40 p-5">
-              <p className="text-sm text-zinc-500">Cidade</p>
-              <p className="mt-1 text-lg font-bold">
-                📍 {loja.cidade}
-              </p>
-            </div>
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {loja.cidade && (
+              <div className="rounded-3xl border border-white/10 bg-black/40 p-5">
+                <p className="text-sm text-zinc-500">Cidade</p>
+                <p className="mt-1 text-lg font-bold">
+                  📍 {loja.cidade}
+                </p>
+              </div>
+            )}
 
             {loja.endereco && (
               <div className="rounded-3xl border border-white/10 bg-black/40 p-5">
@@ -107,6 +164,16 @@ export default async function LojaPage({
                 </p>
               </div>
             )}
+
+            <div className="rounded-3xl border border-white/10 bg-black/40 p-5">
+              <p className="text-sm text-zinc-500">Avaliações</p>
+              <p className="mt-1 text-lg font-bold text-yellow-300">
+                ⭐ {mediaAvaliacoes} / 5
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                {totalAvaliacoes} avaliação(ões)
+              </p>
+            </div>
           </div>
 
           <div className="mt-10 flex flex-wrap gap-4">
@@ -141,6 +208,13 @@ export default async function LojaPage({
                 Como chegar
               </a>
             )}
+<FavoritarLoja lojaId={loja.id} />
+            <a
+              href="#avaliacoes"
+              className="rounded-2xl border border-yellow-400/40 bg-yellow-400/10 px-8 py-4 font-black text-yellow-300"
+            >
+              Avaliações
+            </a>
 
             <a
               href="/"
@@ -157,6 +231,7 @@ export default async function LojaPage({
               <h2 className="text-4xl font-black">
                 Produtos e serviços
               </h2>
+
               <p className="mt-2 text-zinc-400">
                 Veja o que esta loja oferece no VemVer.
               </p>
@@ -172,14 +247,28 @@ export default async function LojaPage({
               {produtos.map((produto) => (
                 <div
                   key={produto.id}
-                  className="rounded-3xl border border-white/10 bg-zinc-900 p-5"
+                  className={`rounded-3xl border p-5 transition hover:scale-[1.02] ${
+                    produto.destaque === true
+                      ? "border-2 border-yellow-400 bg-yellow-400/10 shadow-2xl shadow-yellow-500/20"
+                      : "border-white/10 bg-zinc-900 hover:border-green-400/40"
+                  }`}
                 >
-                  {produto.imagem_url && (
+                  {produto.imagem_url ? (
                     <img
                       src={produto.imagem_url}
                       alt={produto.nome}
                       className="h-48 w-full rounded-2xl object-cover"
                     />
+                  ) : (
+                    <div className="flex h-48 w-full items-center justify-center rounded-2xl bg-black/40 text-zinc-500">
+                      Sem imagem
+                    </div>
+                  )}
+
+                  {produto.destaque === true && (
+                    <span className="mt-4 inline-block rounded-full bg-yellow-400 px-3 py-1 text-sm font-black text-black">
+                      ⭐ DESTAQUE
+                    </span>
                   )}
 
                   <h3 className="mt-5 text-2xl font-black">
@@ -200,9 +289,9 @@ export default async function LojaPage({
 
                   {loja.whatsapp && (
                     <a
-                      href={`https://wa.me/55${loja.whatsapp}?text=${encodeURIComponent(
-                        `Olá! Vi no VemVer e tenho interesse em: ${produto.nome}`
-                      )}`}
+                     href={`https://wa.me/55${loja.whatsapp}?text=${encodeURIComponent(
+  `Olá! Vi o produto ${produto.nome} no VemVer e gostaria de mais informações.${produto.preco ? ` Valor anunciado: R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : ""}`
+)}`}
                       target="_blank"
                       className="mt-5 block rounded-2xl bg-green-400 px-5 py-4 text-center font-black text-black"
                     >
@@ -217,6 +306,56 @@ export default async function LojaPage({
               Esta loja ainda não cadastrou produtos ou serviços.
             </div>
           )}
+        </section>
+
+        <section id="avaliacoes" className="mt-16">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-4xl font-black">
+                Avaliações da loja
+              </h2>
+
+              <p className="mt-2 text-zinc-400">
+                Veja o que os clientes estão falando.
+              </p>
+            </div>
+
+            <span className="rounded-full bg-yellow-400/10 px-4 py-2 text-sm font-black text-yellow-300">
+              ⭐ {mediaAvaliacoes}
+            </span>
+          </div>
+
+          {avaliacoes && avaliacoes.length > 0 ? (
+            <div className="mt-8 grid gap-5 md:grid-cols-2">
+              {avaliacoes.map((avaliacao) => (
+                <div
+                  key={avaliacao.id}
+                  className="rounded-3xl border border-white/10 bg-zinc-900 p-6"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-xl font-black">
+                      {avaliacao.nome_cliente || "Cliente"}
+                    </h3>
+
+                    <span className="rounded-full bg-yellow-400 px-3 py-1 text-sm font-black text-black">
+                      ⭐ {avaliacao.nota}
+                    </span>
+                  </div>
+
+                  {avaliacao.comentario && (
+                    <p className="mt-4 text-zinc-300">
+                      {avaliacao.comentario}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-8 text-zinc-400">
+              Esta loja ainda não possui avaliações.
+            </div>
+          )}
+          <AvaliarLoja lojaId={loja.id} />
         </section>
       </div>
     </main>
