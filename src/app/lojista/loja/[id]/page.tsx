@@ -245,8 +245,10 @@ export default function LojaGerenciarPage({
     carregarProdutos(userId, lojaId)
   }
 async function assinarPlano(plano: string) {
+  console.log("CLICOU NO BOTÃO:", plano)
   try {
     const response = await fetch("/api/mercadopago", {
+      
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -256,11 +258,13 @@ async function assinarPlano(plano: string) {
   loja_id: loja.id,
 }),
     })
-
+console.log("STATUS:", response.status)
     const data = await response.json()
-
+console.log("RESPOSTA:", data)
+console.log("SANDBOX:", data.sandbox_init_point)
+console.log("PRODUÇÃO:", data.init_point)
     if (data.init_point) {
-      window.open(data.init_point, "_blank")
+     window.open(data.sandbox_init_point || data.init_point, "_blank")
     } else {
       alert("Erro ao gerar pagamento")
     }

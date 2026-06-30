@@ -63,22 +63,25 @@ export async function POST(request: Request) {
       },
     });
 
-   const { data, error } = await supabase
-  .from("pagamentos")
-  .insert([
-    {
-      loja_id: Number(lojaId),
-      plano,
-      valor: planoEscolhido.preco,
-      status: "pending",
-      mp_preference_id: response.id,
-    },
-  ])
-  .select();
+    console.log("PREFERENCE:");
+    console.dir(response, { depth: null });
 
-console.log("INSERT PAGAMENTO:");
-console.log("DATA:", data);
-console.log("ERROR:", error);
+    const { data, error } = await supabase
+      .from("pagamentos")
+      .insert([
+        {
+          loja_id: Number(lojaId),
+          plano,
+          valor: planoEscolhido.preco,
+          status: "pending",
+          mp_preference_id: response.id,
+        },
+      ])
+      .select();
+
+    console.log("INSERT PAGAMENTO:");
+    console.log("DATA:", data);
+    console.log("ERROR:", error);
 
     return NextResponse.json({
       init_point: response.init_point,
@@ -93,6 +96,8 @@ console.log("ERROR:", error);
       {
         error: "Erro ao criar pagamento",
         detalhes: error?.message || error,
+        status: error?.status || null,
+        causa: error?.cause || null,
       },
       { status: 500 }
     );
