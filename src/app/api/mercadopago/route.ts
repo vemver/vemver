@@ -55,6 +55,7 @@ export async function POST(request: Request) {
           loja_id: lojaId,
           plano,
         },
+        notification_url: "https://vemverapp.com.br/api/webhook/mercadopago",
         back_urls: {
           success: "https://vemverapp.com.br/lojista",
           failure: "https://vemverapp.com.br/lojista",
