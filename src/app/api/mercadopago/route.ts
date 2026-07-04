@@ -64,8 +64,15 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log("PREFERENCE:");
-    console.dir(response, { depth: null });
+   console.log("PREFERENCE:");
+console.dir(response, { depth: null });
+
+console.log("NOTIFICATION URL ENVIADA:");
+console.log("https://vemverapp.com.br/api/webhook/mercadopago");
+
+console.log("INIT POINT:", response.init_point);
+console.log("SANDBOX INIT POINT:", response.sandbox_init_point);
+console.log("PREFERENCE ID:", response.id);
 
     const { data, error } = await supabase
       .from("pagamentos")

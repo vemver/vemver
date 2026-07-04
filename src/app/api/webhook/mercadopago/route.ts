@@ -157,3 +157,9 @@ export async function POST(request: Request) {
     );
   }
 }
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    webhook: "mercadopago",
+  });
+}
