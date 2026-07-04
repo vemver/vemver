@@ -22,10 +22,15 @@ export async function POST(request: Request) {
     console.log("========== WEBHOOK MERCADO PAGO ==========");
     console.dir(body, { depth: null });
 
-    const paymentId =
-      body?.data?.id ||
-      body?.id ||
-      body?.resource?.split("/")?.pop();
+const paymentId =
+  body?.data?.id ??
+  body?.resource?.split("/")?.pop() ??
+  body?.id;
+
+console.log("BODY RECEBIDO:");
+console.dir(body, { depth: null });
+
+console.log("PAYMENT ID:", paymentId);
 
     if (!paymentId) {
       return NextResponse.json({
@@ -35,6 +40,7 @@ export async function POST(request: Request) {
     }
 
     const payment = new Payment(mpClient);
+    console.log("CONSULTANDO PAGAMENTO:", paymentId);
 
     const paymentData: any = await payment.get({
       id: String(paymentId),
