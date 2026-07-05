@@ -11,7 +11,10 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 const mpClient = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
-
+console.log("TOKEN WEBHOOK:");
+console.log(
+  mercadoPagoToken.substring(0, 25)
+);
 console.log("TOKEN WEBHOOK:", mercadoPagoToken.substring(0, 35));
 
 export async function GET() {

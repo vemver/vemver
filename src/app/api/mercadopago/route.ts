@@ -7,7 +7,10 @@ const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 const client = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
-
+console.log("TOKEN MERCADOPAGO:");
+console.log(
+  process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 25)
+);
 console.log("TOKEN MERCADOPAGO:", mercadoPagoToken.substring(0, 35));
 
 export async function POST(request: Request) {
