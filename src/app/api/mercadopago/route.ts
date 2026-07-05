@@ -2,9 +2,13 @@ import { MercadoPagoConfig, Preference } from "mercadopago";
 import { NextResponse } from "next/server";
 import { supabase } from "../../supabase";
 
+const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
+
 const client = new MercadoPagoConfig({
-  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || "",
+  accessToken: mercadoPagoToken,
 });
+
+console.log("TOKEN MERCADOPAGO:", mercadoPagoToken.substring(0, 35));
 
 export async function POST(request: Request) {
   try {
@@ -55,7 +59,8 @@ export async function POST(request: Request) {
           loja_id: lojaId,
           plano,
         },
-        notification_url: "https://vemverapp.com.br/api/webhook/mercadopago",
+        notification_url:
+          "https://vemverapp.com.br/api/webhook/mercadopago",
         back_urls: {
           success: "https://vemverapp.com.br/lojista",
           failure: "https://vemverapp.com.br/lojista",
@@ -64,15 +69,10 @@ export async function POST(request: Request) {
       },
     });
 
-   console.log("PREFERENCE:");
-console.dir(response, { depth: null });
-
-console.log("NOTIFICATION URL ENVIADA:");
-console.log("https://vemverapp.com.br/api/webhook/mercadopago");
-
-console.log("INIT POINT:", response.init_point);
-console.log("SANDBOX INIT POINT:", response.sandbox_init_point);
-console.log("PREFERENCE ID:", response.id);
+    console.log("PREFERENCE ID:", response.id);
+    console.log("COLLECTOR ID:", response.collector_id);
+    console.log("INIT POINT:", response.init_point);
+    console.log("SANDBOX INIT POINT:", response.sandbox_init_point);
 
     const { data, error } = await supabase
       .from("pagamentos")

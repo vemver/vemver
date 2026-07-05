@@ -6,14 +6,13 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseServiceKey
-);
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 const mpClient = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
+
+console.log("TOKEN WEBHOOK:", mercadoPagoToken.substring(0, 35));
 
 export async function GET() {
   return NextResponse.json({
@@ -27,11 +26,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const url = new URL(request.url);
 
-    console.log("==========================================");
     console.log("========== WEBHOOK MERCADO PAGO ==========");
-    console.log("==========================================");
-
-    console.log("BODY:");
     console.dir(body, { depth: null });
 
     const topic =
@@ -51,7 +46,6 @@ export async function POST(request: Request) {
     console.log("ID RECEBIDO:", id);
 
     if (!id) {
-      console.log("SEM ID RECEBIDO");
       return NextResponse.json({
         recebido: true,
         motivo: "Sem ID",
@@ -87,8 +81,6 @@ export async function POST(request: Request) {
       console.log("PAYMENT ID EXTRAÍDO:", paymentId);
 
       if (!paymentId) {
-        console.log("MERCHANT ORDER SEM PAGAMENTO");
-
         return NextResponse.json({
           recebido: true,
           motivo: "Merchant order sem pagamento",
@@ -118,8 +110,6 @@ export async function POST(request: Request) {
     console.log("LOJA:", lojaId);
 
     if (!preferenceId || !lojaId) {
-      console.log("SEM PREFERENCE OU LOJA");
-
       return NextResponse.json({
         recebido: true,
         motivo: "Sem preferenceId ou lojaId",
@@ -143,6 +133,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         recebido: true,
         motivo: "Pagamento não encontrado",
+        preferenceId,
       });
     }
 
@@ -158,8 +149,6 @@ export async function POST(request: Request) {
     console.log("PAGAMENTO ATUALIZADO");
 
     if (status !== "approved") {
-      console.log("STATUS AINDA:", status);
-
       return NextResponse.json({
         recebido: true,
         status,
@@ -214,8 +203,6 @@ export async function POST(request: Request) {
       console.log("LOJA ATUALIZADA COM SUCESSO");
     }
 
-    console.log("========== FIM WEBHOOK ==========");
-
     return NextResponse.json({
       recebido: true,
       status,
@@ -234,9 +221,7 @@ export async function POST(request: Request) {
         cause: error?.cause || null,
         status: error?.status || null,
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
