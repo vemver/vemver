@@ -12,6 +12,8 @@ const mpClient = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
 console.log("TOKEN WEBHOOK:");
+console.log(mercadoPagoToken.substring(0, 20));
+console.log("TOKEN WEBHOOK:");
 console.log(
   mercadoPagoToken.substring(0, 25)
 );
