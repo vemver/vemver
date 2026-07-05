@@ -1,49 +1,89 @@
 import { createClient } from "@supabase/supabase-js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
+import { MercadoPagoConfig, Payment, MerchantOrder } from "mercadopago";
 import { NextResponse } from "next/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseServiceKey
-);
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 const mpClient = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    webhook: "mercadopago",
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const url = new URL(request.url);
 
     console.log("========== WEBHOOK MERCADO PAGO ==========");
     console.dir(body, { depth: null });
 
-const paymentId =
-  body?.data?.id ??
-  body?.resource?.split("/")?.pop() ??
-  body?.id;
+    const topic =
+      body?.topic ||
+      body?.type ||
+      url.searchParams.get("topic");
 
-console.log("BODY RECEBIDO:");
-console.dir(body, { depth: null });
+    const id =
+      body?.data?.id ||
+      body?.id ||
+      url.searchParams.get("id") ||
+      body?.resource?.split("/")?.pop();
 
-console.log("PAYMENT ID:", paymentId);
+    console.log("TOPIC:", topic);
+    console.log("ID RECEBIDO:", id);
 
-    if (!paymentId) {
+    if (!id) {
       return NextResponse.json({
         recebido: true,
-        motivo: "Sem paymentId",
+        motivo: "Sem ID",
       });
     }
 
+    let paymentId = String(id);
+
+    if (topic === "merchant_order") {
+      const merchantOrder = new MerchantOrder(mpClient);
+
+      const merchantOrderData: any = await merchantOrder.get({
+        merchantOrderId: String(id),
+      });
+
+      console.log("========== MERCHANT ORDER ==========");
+      console.dir(merchantOrderData, { depth: null });
+
+      const pagamentoAprovado = merchantOrderData.payments?.find(
+        (p: any) => p.status === "approved"
+      );
+
+      const primeiroPagamento = merchantOrderData.payments?.[0];
+
+      paymentId = String(
+        pagamentoAprovado?.id || primeiroPagamento?.id || ""
+      );
+
+      if (!paymentId) {
+        return NextResponse.json({
+          recebido: true,
+          motivo: "Merchant order sem pagamento",
+        });
+      }
+    }
+
+    console.log("CONSULTANDO PAYMENT ID:", paymentId);
+
     const payment = new Payment(mpClient);
-    console.log("CONSULTANDO PAGAMENTO:", paymentId);
 
     const paymentData: any = await payment.get({
-      id: String(paymentId),
+      id: paymentId,
     });
 
     console.log("========== PAGAMENTO ==========");
@@ -62,20 +102,20 @@ console.log("PAYMENT ID:", paymentId);
       });
     }
 
-    const { data: pagamento, error: pagamentoError } =
-      await supabaseAdmin
-        .from("pagamentos")
-        .select("*")
-        .eq("mp_preference_id", preferenceId)
-        .single();
+    const { data: pagamento, error: pagamentoError } = await supabaseAdmin
+      .from("pagamentos")
+      .select("*")
+      .eq("mp_preference_id", preferenceId)
+      .single();
 
     if (pagamentoError || !pagamento) {
-      console.log("Pagamento não encontrado:");
+      console.log("Pagamento não encontrado no banco:");
       console.dir(pagamentoError, { depth: null });
 
       return NextResponse.json({
         recebido: true,
-        motivo: "Pagamento não encontrado",
+        motivo: "Pagamento não encontrado no banco",
+        preferenceId,
       });
     }
 
@@ -89,8 +129,6 @@ console.log("PAYMENT ID:", paymentId);
       .eq("id", pagamento.id);
 
     if (status !== "approved") {
-      console.log("Pagamento ainda não aprovado:", status);
-
       return NextResponse.json({
         recebido: true,
         status,
@@ -138,8 +176,6 @@ console.log("PAYMENT ID:", paymentId);
     if (lojaError) {
       console.log("Erro ao atualizar loja:");
       console.dir(lojaError, { depth: null });
-    } else {
-      console.log("LOJA ATUALIZADA COM SUCESSO!");
     }
 
     return NextResponse.json({
@@ -147,6 +183,7 @@ console.log("PAYMENT ID:", paymentId);
       status,
       plano,
       lojaId,
+      paymentId,
     });
   } catch (error: any) {
     console.log("========== ERRO WEBHOOK ==========");
@@ -156,16 +193,10 @@ console.log("PAYMENT ID:", paymentId);
       {
         error: "Erro no webhook",
         detalhes: error?.message || error,
+        causa: error?.cause || null,
+        status: error?.status || null,
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
-}
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    webhook: "mercadopago",
-  });
 }
