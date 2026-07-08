@@ -19,6 +19,8 @@ console.log("TOKEN MERCADOPAGO:", mercadoPagoToken.substring(0, 35));
 
 export async function POST(request: Request) {
   try {
+    console.log("TOKEN PAGAMENTO DENTRO POST:");
+console.log(mercadoPagoToken.substring(0, 35));
     const body = await request.json();
 
     const plano = body.plano || "premium";

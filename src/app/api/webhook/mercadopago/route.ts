@@ -28,6 +28,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    console.log("TOKEN WEBHOOK DENTRO POST:");
+console.log(mercadoPagoToken.substring(0, 35));
     const body = await request.json();
     const url = new URL(request.url);
 
