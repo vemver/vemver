@@ -59,7 +59,9 @@ console.log(mercadoPagoToken.substring(0, 35));
       });
     }
 
-    let paymentId = String(id);
+   let paymentId = String(id);
+let merchantPreferenceId = "";
+let merchantLojaId = "";
 
     if (topic === "merchant_order") {
       console.log("CONSULTANDO MERCHANT ORDER:", id);
@@ -72,7 +74,23 @@ console.log(mercadoPagoToken.substring(0, 35));
 
       console.log("MERCHANT ORDER:");
       console.dir(merchantOrderData, { depth: null });
+merchantPreferenceId = String(
+  merchantOrderData.preference_id || ""
+);
 
+merchantLojaId = String(
+  merchantOrderData.external_reference || ""
+);
+
+console.log(
+  "PREFERENCE DA MERCHANT ORDER:",
+  merchantPreferenceId
+);
+
+console.log(
+  "LOJA DA MERCHANT ORDER:",
+  merchantLojaId
+);
       const pagamentoAprovado = merchantOrderData.payments?.find(
         (p: any) => p.status === "approved"
       );
@@ -106,11 +124,16 @@ console.log(mercadoPagoToken.substring(0, 35));
     console.log("PAYMENT:");
     console.dir(paymentData, { depth: null });
 
-    const status = paymentData.status;
-    const preferenceId = paymentData.preference_id;
-    const lojaId =
-      paymentData.metadata?.loja_id ||
-      paymentData.external_reference;
+   const status = paymentData.status;
+
+const preferenceId =
+  paymentData.preference_id ||
+  merchantPreferenceId;
+
+const lojaId =
+  paymentData.metadata?.loja_id ||
+  paymentData.external_reference ||
+  merchantLojaId;
 
     console.log("STATUS:", status);
     console.log("PREFERENCE:", preferenceId);
