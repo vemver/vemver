@@ -22,7 +22,8 @@ export async function POST(request: Request) {
     console.log("TOKEN PAGAMENTO DENTRO POST:");
 console.log(mercadoPagoToken.substring(0, 35));
     const body = await request.json();
-
+console.log("TOKEN PAGAMENTO DENTRO POST:");
+console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
     const plano = body.plano || "premium";
     const lojaId = body.loja_id;
 
