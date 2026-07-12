@@ -167,14 +167,21 @@ const lojaId =
       });
     }
 
-    await supabaseAdmin
-      .from("pagamentos")
-      .update({
-        status,
-        mp_payment_id: paymentId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", pagamento.id);
+   const { data: updateData, error: updateError } = await supabaseAdmin
+  .from("pagamentos")
+  .update({
+    status,
+    mp_payment_id: paymentId,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", pagamento.id)
+  .select();
+
+console.log("UPDATE PAGAMENTO:");
+console.dir(updateData, { depth: null });
+
+console.log("ERRO UPDATE PAGAMENTO:");
+console.dir(updateError, { depth: null });
 
     console.log("PAGAMENTO ATUALIZADO");
 
