@@ -156,8 +156,10 @@ export default function Home() {
     });
 
   const lojasPremium = lojasFiltradas.filter(
-    (loja) => loja.premium === true
-  );
+  (loja) =>
+    loja.premium === true &&
+    loja.patrocinado !== true
+);
   const lojasPatrocinadas = lojasFiltradas.filter(
   (loja) => loja.patrocinado === true
 );
@@ -185,7 +187,38 @@ const produtosDestaque = produtos
     return 0
   })
   .slice(0, 6)
+const produtosHome = produtos
+  .filter((produto) => {
+    if (produto.ativo === false) return false;
 
+    const lojaDoProduto = lojas.find(
+      (loja) => Number(loja.id) === Number(produto.loja_id)
+    );
+
+    if (!lojaDoProduto) return false;
+    if (lojaDoProduto.ativo === false) return false;
+    if (lojaDoProduto.status !== "aprovada") return false;
+
+    return true;
+  })
+  .sort((a, b) => {
+    const lojaA = lojas.find(
+      (loja) => Number(loja.id) === Number(a.loja_id)
+    );
+
+    const lojaB = lojas.find(
+      (loja) => Number(loja.id) === Number(b.loja_id)
+    );
+
+    if (lojaA?.patrocinado && !lojaB?.patrocinado) return -1;
+    if (!lojaA?.patrocinado && lojaB?.patrocinado) return 1;
+
+    if (lojaA?.premium && !lojaB?.premium) return -1;
+    if (!lojaA?.premium && lojaB?.premium) return 1;
+
+    return Number(b.id) - Number(a.id);
+  })
+  .slice(0, 12);
   const produtosFiltrados = produtos.filter((produto) => {
     const buscaNormalizada = normalizar(busca);
 
@@ -410,6 +443,136 @@ const produtosDestaque = produtos
           </div>
         </section>
       )}
+      {produtosHome.length > 0 && !busca && (
+  <section className="mx-auto max-w-7xl px-6 py-16">
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 className="text-4xl font-black">
+          Produtos e serviços para você
+        </h2>
+
+        <p className="mt-2 text-zinc-400">
+          Descubra novidades oferecidas pelas lojas da sua cidade.
+        </p>
+      </div>
+
+      <span className="rounded-full bg-green-400/15 px-4 py-2 text-sm font-bold text-green-300">
+        {produtosHome.length} opções
+      </span>
+    </div>
+
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      {produtosHome.map((produto) => {
+        const lojaDoProduto = lojas.find(
+          (loja) => Number(loja.id) === Number(produto.loja_id)
+        );
+
+        if (!lojaDoProduto) return null;
+
+        return (
+          <div
+            key={`home-produto-${produto.id}`}
+            className={`overflow-hidden rounded-3xl border bg-zinc-900 transition hover:-translate-y-1 ${
+              lojaDoProduto.patrocinado
+                ? "border-blue-500 shadow-lg shadow-blue-500/20"
+                : lojaDoProduto.premium
+                ? "border-yellow-400/70 shadow-lg shadow-yellow-500/10"
+                : "border-white/10 hover:border-green-400/40"
+            }`}
+          >
+            {produto.imagem_url ? (
+              <img
+                src={produto.imagem_url}
+                alt={produto.nome}
+                className="h-52 w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-52 items-center justify-center bg-zinc-800 text-zinc-500">
+                Sem imagem
+              </div>
+            )}
+
+            <div className="p-5">
+              <div className="flex flex-wrap gap-2">
+                {lojaDoProduto.patrocinado && (
+                  <span className="rounded-full bg-blue-500 px-3 py-1 text-xs font-black text-white">
+                    🚀 PATROCINADO
+                  </span>
+                )}
+
+                {!lojaDoProduto.patrocinado &&
+                  lojaDoProduto.premium && (
+                    <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-black text-black">
+                      ⭐ PREMIUM
+                    </span>
+                  )}
+              </div>
+
+              <h3 className="mt-4 line-clamp-2 text-xl font-black">
+                {produto.nome}
+              </h3>
+
+              {produto.preco && (
+                <p className="mt-2 text-2xl font-black text-green-300">
+                  R${" "}
+                  {Number(produto.preco)
+                    .toFixed(2)
+                    .replace(".", ",")}
+                </p>
+              )}
+
+              {produto.descricao && (
+                <p className="mt-2 line-clamp-2 text-sm text-zinc-400">
+                  {produto.descricao}
+                </p>
+              )}
+
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <p className="text-sm text-zinc-500">
+                  Vendido por
+                </p>
+
+                <p className="font-black">
+                  {lojaDoProduto.nome}
+                </p>
+
+                <p className="text-sm text-zinc-500">
+                  📍 {lojaDoProduto.cidade}
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <button
+                  onClick={() =>
+                    (window.location.href =
+                      criarSlugLoja(lojaDoProduto))
+                  }
+                  className="rounded-2xl border border-white/15 px-4 py-3 font-bold transition hover:border-green-400/50"
+                >
+                  Ver loja
+                </button>
+
+                {lojaDoProduto.whatsapp && (
+                  <a
+                    href={`https://wa.me/55${
+                      lojaDoProduto.whatsapp
+                    }?text=${encodeURIComponent(
+                      `Olá! Vi no VemVer e tenho interesse em: ${produto.nome}`
+                    )}`}
+                    target="_blank"
+                    className="rounded-2xl bg-green-400 px-4 py-3 text-center font-black text-black"
+                  >
+                    Tenho interesse
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </section>
+)}
 {produtosDestaque.length > 0 && (
   <section className="mx-auto max-w-7xl px-6 pb-16">
     <div className="mb-8">
