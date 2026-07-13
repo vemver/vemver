@@ -122,11 +122,12 @@ export default function Home() {
       );
     })
    .sort((a, b) => {
-  if (a.patrocinado && !b.patrocinado) return -1
-  if (!a.patrocinado && b.patrocinado) return 1
+  const scoreA = Number(a.score || 0)
+  const scoreB = Number(b.score || 0)
 
-  if (a.premium && !b.premium) return -1
-  if (!a.premium && b.premium) return 1
+  if (scoreA !== scoreB) {
+    return scoreB - scoreA
+  }
 
       if (
         latitude &&
