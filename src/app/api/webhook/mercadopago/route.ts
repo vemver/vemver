@@ -1,23 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
-import { MercadoPagoConfig, Payment, MerchantOrder } from "mercadopago";
+import {
+  MercadoPagoConfig,
+  MerchantOrder,
+  Payment,
+} from "mercadopago";
 import { NextResponse } from "next/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const mercadoPagoToken =
+  process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseAdmin = createClient(
+  supabaseUrl,
+  supabaseServiceKey
+);
 
 const mpClient = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
-console.log("TOKEN WEBHOOK:");
-console.log(mercadoPagoToken.substring(0, 20));
-console.log("TOKEN WEBHOOK:");
-console.log(
-  mercadoPagoToken.substring(0, 25)
-);
-console.log("TOKEN WEBHOOK:", mercadoPagoToken.substring(0, 35));
 
 export async function GET() {
   return NextResponse.json({
@@ -28,74 +30,70 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    console.log("TOKEN WEBHOOK DENTRO POST:");
-console.log(mercadoPagoToken.substring(0, 35));
+    if (
+      !supabaseUrl ||
+      !supabaseServiceKey ||
+      !mercadoPagoToken
+    ) {
+      console.error("Variáveis do webhook não configuradas");
+
+      return NextResponse.json(
+        { error: "Configuração incompleta" },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const url = new URL(request.url);
-
-    console.log("========== WEBHOOK MERCADO PAGO ==========");
-    console.dir(body, { depth: null });
 
     const topic =
       body?.topic ||
       body?.type ||
-      url.searchParams.get("topic");
+      url.searchParams.get("topic") ||
+      url.searchParams.get("type");
 
-    const id =
+    const eventoId =
       body?.data?.id ||
-      body?.id ||
+      url.searchParams.get("data.id") ||
       url.searchParams.get("id") ||
-      body?.resource?.split("/")?.pop();
+      body?.resource?.split("/")?.pop() ||
+      body?.id;
 
-    console.log("TOPIC:", topic);
-    console.log("RESOURCE:", body?.resource);
-    console.log("DATA:", body?.data);
-    console.log("ID RECEBIDO:", id);
-
-    if (!id) {
+    if (!eventoId) {
       return NextResponse.json({
         recebido: true,
-        motivo: "Sem ID",
+        motivo: "Notificação sem ID",
       });
     }
 
-   let paymentId = String(id);
-let merchantPreferenceId = "";
-let merchantLojaId = "";
+    let paymentId = String(eventoId);
+    let merchantPreferenceId = "";
+    let merchantLojaId = "";
 
     if (topic === "merchant_order") {
-      console.log("CONSULTANDO MERCHANT ORDER:", id);
-
       const merchantOrder = new MerchantOrder(mpClient);
 
-      const merchantOrderData: any = await merchantOrder.get({
-        merchantOrderId: String(id),
-      });
+      const merchantOrderData: any =
+        await merchantOrder.get({
+          merchantOrderId: String(eventoId),
+        });
 
-      console.log("MERCHANT ORDER:");
-      console.dir(merchantOrderData, { depth: null });
-merchantPreferenceId = String(
-  merchantOrderData.preference_id || ""
-);
-
-merchantLojaId = String(
-  merchantOrderData.external_reference || ""
-);
-
-console.log(
-  "PREFERENCE DA MERCHANT ORDER:",
-  merchantPreferenceId
-);
-
-console.log(
-  "LOJA DA MERCHANT ORDER:",
-  merchantLojaId
-);
-      const pagamentoAprovado = merchantOrderData.payments?.find(
-        (p: any) => p.status === "approved"
+      merchantPreferenceId = String(
+        merchantOrderData.preference_id || ""
       );
 
-      const primeiroPagamento = merchantOrderData.payments?.[0];
+      merchantLojaId = String(
+        merchantOrderData.external_reference || ""
+      );
+
+      const pagamentoAprovado =
+        merchantOrderData.payments?.find(
+          (pagamento: any) =>
+            pagamento.status === "approved"
+        );
+
+      const primeiroPagamento =
+        merchantOrderData.payments?.[0];
 
       paymentId = String(
         pagamentoAprovado?.id ||
@@ -103,17 +101,13 @@ console.log(
           ""
       );
 
-      console.log("PAYMENT ID EXTRAÍDO:", paymentId);
-
       if (!paymentId) {
         return NextResponse.json({
           recebido: true,
-          motivo: "Merchant order sem pagamento",
+          motivo: "Merchant order ainda sem pagamento",
         });
       }
     }
-
-    console.log("CONSULTANDO PAYMENT:", paymentId);
 
     const payment = new Payment(mpClient);
 
@@ -121,23 +115,20 @@ console.log(
       id: paymentId,
     });
 
-    console.log("PAYMENT:");
-    console.dir(paymentData, { depth: null });
+    const status = paymentData.status;
 
-   const status = paymentData.status;
+    const preferenceId = String(
+      paymentData.preference_id ||
+        merchantPreferenceId ||
+        ""
+    );
 
-const preferenceId =
-  paymentData.preference_id ||
-  merchantPreferenceId;
-
-const lojaId =
-  paymentData.metadata?.loja_id ||
-  paymentData.external_reference ||
-  merchantLojaId;
-
-    console.log("STATUS:", status);
-    console.log("PREFERENCE:", preferenceId);
-    console.log("LOJA:", lojaId);
+    const lojaId = String(
+      paymentData.metadata?.loja_id ||
+        paymentData.external_reference ||
+        merchantLojaId ||
+        ""
+    );
 
     if (!preferenceId || !lojaId) {
       return NextResponse.json({
@@ -151,39 +142,49 @@ const lojaId =
         .from("pagamentos")
         .select("*")
         .eq("mp_preference_id", preferenceId)
-        .single();
+        .maybeSingle();
 
-    console.log("PAGAMENTO SUPABASE:");
-    console.dir(pagamento, { depth: null });
+    if (pagamentoError) {
+      console.error(
+        "Erro ao localizar pagamento:",
+        pagamentoError
+      );
 
-    if (pagamentoError || !pagamento) {
-      console.log("PAGAMENTO NÃO ENCONTRADO:");
-      console.dir(pagamentoError, { depth: null });
+      return NextResponse.json(
+        { error: "Erro ao consultar pagamento" },
+        { status: 500 }
+      );
+    }
 
+    if (!pagamento) {
       return NextResponse.json({
         recebido: true,
-        motivo: "Pagamento não encontrado",
+        motivo: "Pagamento não encontrado no banco",
         preferenceId,
       });
     }
 
-   const { data: updateData, error: updateError } = await supabaseAdmin
-  .from("pagamentos")
-  .update({
-    status,
-    mp_payment_id: paymentId,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", pagamento.id)
-  .select();
+    const { error: updatePagamentoError } =
+      await supabaseAdmin
+        .from("pagamentos")
+        .update({
+          status,
+          mp_payment_id: paymentId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pagamento.id);
 
-console.log("UPDATE PAGAMENTO:");
-console.dir(updateData, { depth: null });
+    if (updatePagamentoError) {
+      console.error(
+        "Erro ao atualizar pagamento:",
+        updatePagamentoError
+      );
 
-console.log("ERRO UPDATE PAGAMENTO:");
-console.dir(updateError, { depth: null });
-
-    console.log("PAGAMENTO ATUALIZADO");
+      return NextResponse.json(
+        { error: "Erro ao atualizar pagamento" },
+        { status: 500 }
+      );
+    }
 
     if (status !== "approved") {
       return NextResponse.json({
@@ -194,39 +195,47 @@ console.dir(updateError, { depth: null });
 
     const plano = pagamento.plano;
 
-    let atualizacaoLoja: any = {
-      plano,
-    };
-
-    if (plano === "premium") {
-      atualizacaoLoja = {
+    const configuracoesPlano: Record<
+      string,
+      {
+        plano: string;
+        premium: boolean;
+        patrocinado: boolean;
+        limite_lojas: number;
+      }
+    > = {
+      premium: {
         plano: "premium",
         premium: true,
         patrocinado: false,
         limite_lojas: 1,
-      };
-    }
+      },
 
-    if (plano === "patrocinado") {
-      atualizacaoLoja = {
+      patrocinado: {
         plano: "patrocinado",
         premium: true,
         patrocinado: true,
         limite_lojas: 1,
-      };
-    }
+      },
 
-    if (plano === "multiunidade") {
-      atualizacaoLoja = {
+      multiunidade: {
         plano: "multiunidade",
         premium: true,
         patrocinado: false,
         limite_lojas: 5,
-      };
-    }
+      },
+    };
 
-    console.log("ATUALIZANDO LOJA:", lojaId);
-    console.dir(atualizacaoLoja, { depth: null });
+    const atualizacaoLoja =
+      configuracoesPlano[plano];
+
+    if (!atualizacaoLoja) {
+      return NextResponse.json({
+        recebido: true,
+        status,
+        motivo: "Plano não reconhecido",
+      });
+    }
 
     const { error: lojaError } = await supabaseAdmin
       .from("lojas")
@@ -234,10 +243,12 @@ console.dir(updateError, { depth: null });
       .eq("id", Number(lojaId));
 
     if (lojaError) {
-      console.log("ERRO ATUALIZANDO LOJA:");
-      console.dir(lojaError, { depth: null });
-    } else {
-      console.log("LOJA ATUALIZADA COM SUCESSO");
+      console.error("Erro ao atualizar loja:", lojaError);
+
+      return NextResponse.json(
+        { error: "Erro ao atualizar loja" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
@@ -248,15 +259,15 @@ console.dir(updateError, { depth: null });
       paymentId,
     });
   } catch (error: any) {
-    console.log("========== ERRO WEBHOOK ==========");
-    console.dir(error, { depth: null });
+    console.error(
+      "Erro no webhook Mercado Pago:",
+      error?.message || error
+    );
 
     return NextResponse.json(
       {
-        error: "Erro webhook",
-        detalhes: error?.message || error,
-        cause: error?.cause || null,
-        status: error?.status || null,
+        error: "Erro no webhook",
+        detalhes: error?.message || "Erro desconhecido",
       },
       { status: 500 }
     );

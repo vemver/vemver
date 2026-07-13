@@ -7,23 +7,18 @@ const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 const client = new MercadoPagoConfig({
   accessToken: mercadoPagoToken,
 });
-console.log("TOKEN PAGAMENTO:");
-console.log(
-  process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 20)
-);
-console.log("TOKEN MERCADOPAGO:");
-console.log(
-  process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 25)
-);
-console.log("TOKEN MERCADOPAGO:", mercadoPagoToken.substring(0, 35));
 
 export async function POST(request: Request) {
   try {
-    console.log("TOKEN PAGAMENTO DENTRO POST:");
-console.log(mercadoPagoToken.substring(0, 35));
+    if (!mercadoPagoToken) {
+      return NextResponse.json(
+        { error: "Credencial do Mercado Pago não configurada" },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
-console.log("TOKEN PAGAMENTO DENTRO POST:");
-console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
+
     const plano = body.plano || "premium";
     const lojaId = body.loja_id;
 
@@ -64,13 +59,17 @@ console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
             currency_id: "BRL",
           },
         ],
+
         external_reference: String(lojaId),
+
         metadata: {
-          loja_id: lojaId,
+          loja_id: Number(lojaId),
           plano,
         },
+
         notification_url:
           "https://vemverapp.com.br/api/webhook/mercadopago",
+
         back_urls: {
           success: "https://vemverapp.com.br/lojista",
           failure: "https://vemverapp.com.br/lojista",
@@ -79,12 +78,7 @@ console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
       },
     });
 
-    console.log("PREFERENCE ID:", response.id);
-    console.log("COLLECTOR ID:", response.collector_id);
-    console.log("INIT POINT:", response.init_point);
-    console.log("SANDBOX INIT POINT:", response.sandbox_init_point);
-
-    const { data, error } = await supabase
+    const { error: pagamentoError } = await supabase
       .from("pagamentos")
       .insert([
         {
@@ -94,12 +88,16 @@ console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
           status: "pending",
           mp_preference_id: response.id,
         },
-      ])
-      .select();
+      ]);
 
-    console.log("INSERT PAGAMENTO:");
-    console.log("DATA:", data);
-    console.log("ERROR:", error);
+    if (pagamentoError) {
+      console.error("Erro ao registrar pagamento:", pagamentoError);
+
+      return NextResponse.json(
+        { error: "Erro ao registrar pagamento" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       init_point: response.init_point,
@@ -107,15 +105,12 @@ console.log(process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 35));
       id: response.id,
     });
   } catch (error: any) {
-    console.log("ERRO MERCADO PAGO:");
-    console.dir(error, { depth: null });
+    console.error("Erro ao criar pagamento:", error?.message || error);
 
     return NextResponse.json(
       {
         error: "Erro ao criar pagamento",
-        detalhes: error?.message || error,
-        status: error?.status || null,
-        causa: error?.cause || null,
+        detalhes: error?.message || "Erro desconhecido",
       },
       { status: 500 }
     );
