@@ -164,6 +164,11 @@ export default function Home() {
   const lojasPatrocinadas = lojasFiltradas.filter(
   (loja) => loja.patrocinado === true
 );
+const lojasComuns = lojasFiltradas.filter(
+  (loja) =>
+    loja.patrocinado !== true &&
+    loja.premium !== true
+);
 const produtosDestaque = produtos
   .filter(
     (produto) =>
@@ -348,7 +353,174 @@ const produtosHome = produtos
           </button>
         </div>
       </section>
+      {!busca && lojasPatrocinadas.length > 0 && (
+        <section className="mx-auto max-w-7xl px-6 pt-16">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <span className="inline-block rounded-full bg-blue-500/15 px-4 py-2 text-sm font-black text-blue-300">
+                PUBLICIDADE
+              </span>
 
+              <h2 className="mt-4 text-4xl font-black text-blue-400">
+                🚀 Em destaque
+              </h2>
+
+              <p className="mt-2 text-zinc-400">
+                Empresas patrocinadas que estão em evidência no VemVer.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-bold text-blue-300">
+              {lojasPatrocinadas.length} patrocinada(s)
+            </span>
+          </div>
+
+          <div className="-mx-6 flex snap-x snap-mandatory gap-5 overflow-x-auto px-6 pb-6">
+            {lojasPatrocinadas.map((loja) => (
+              <article
+                key={`carrossel-patrocinada-${loja.id}`}
+                onClick={() =>
+                  (window.location.href = criarSlugLoja(loja))
+                }
+                className="min-w-[85%] cursor-pointer snap-start overflow-hidden rounded-[2rem] border-2 border-blue-500 bg-gradient-to-br from-blue-500/15 to-zinc-950 p-5 shadow-xl shadow-blue-500/20 transition hover:-translate-y-1 sm:min-w-[420px]"
+              >
+                {loja.imagem_url ? (
+                  <img
+                    src={loja.imagem_url}
+                    alt={loja.nome}
+                    className="h-60 w-full rounded-3xl object-cover"
+                  />
+                ) : (
+                  <div className="flex h-60 w-full items-center justify-center rounded-3xl bg-zinc-900 text-zinc-500">
+                    Loja sem imagem
+                  </div>
+                )}
+
+                <span className="mt-5 inline-block rounded-full bg-blue-500 px-4 py-2 text-sm font-black text-white">
+                  🚀 PATROCINADO
+                </span>
+
+                <h3 className="mt-4 text-3xl font-black">
+                  {loja.nome}
+                </h3>
+
+                <p className="mt-2 text-zinc-400">
+                  {loja.categoria}
+                </p>
+
+                <p className="mt-1 text-zinc-500">
+                  📍 {loja.cidade}
+                </p>
+
+                {loja.descricao && (
+                  <p className="mt-4 line-clamp-2 text-zinc-300">
+                    {loja.descricao}
+                  </p>
+                )}
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.location.href = criarSlugLoja(loja);
+                    }}
+                    className="rounded-2xl bg-blue-500 px-6 py-4 font-black text-white"
+                  >
+                    Ver loja
+                  </button>
+
+                  {loja.whatsapp && (
+                    <a
+                      href={`https://wa.me/55${loja.whatsapp}`}
+                      target="_blank"
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded-2xl border border-white/20 px-6 py-4 font-bold"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!busca && lojasPremium.length > 0 && (
+        <section className="mx-auto max-w-7xl px-6 pt-14">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-4xl font-black text-yellow-400">
+                ⭐ Lojas Premium
+              </h2>
+
+              <p className="mt-2 text-zinc-400">
+                Empresas bem posicionadas no ranking inteligente do VemVer.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-4 py-2 text-sm font-bold text-yellow-300">
+              {lojasPremium.length} premium
+            </span>
+          </div>
+
+          <div className="-mx-6 flex snap-x snap-mandatory gap-5 overflow-x-auto px-6 pb-6">
+            {lojasPremium.map((loja) => (
+              <article
+                key={`carrossel-premium-${loja.id}`}
+                onClick={() =>
+                  (window.location.href = criarSlugLoja(loja))
+                }
+                className="min-w-[82%] cursor-pointer snap-start overflow-hidden rounded-[2rem] border-2 border-yellow-400 bg-gradient-to-br from-yellow-400/10 to-zinc-950 p-5 shadow-xl shadow-yellow-500/15 transition hover:-translate-y-1 sm:min-w-[380px]"
+              >
+                {loja.imagem_url ? (
+                  <img
+                    src={loja.imagem_url}
+                    alt={loja.nome}
+                    className="h-52 w-full rounded-3xl object-cover"
+                  />
+                ) : (
+                  <div className="flex h-52 w-full items-center justify-center rounded-3xl bg-zinc-900 text-zinc-500">
+                    Loja sem imagem
+                  </div>
+                )}
+
+                <span className="mt-5 inline-block rounded-full bg-yellow-400 px-4 py-2 text-sm font-black text-black">
+                  ⭐ PREMIUM
+                </span>
+
+                <h3 className="mt-4 text-2xl font-black">
+                  {loja.nome}
+                </h3>
+
+                <p className="mt-2 text-zinc-400">
+                  {loja.categoria}
+                </p>
+
+                <p className="mt-1 text-zinc-500">
+                  📍 {loja.cidade}
+                </p>
+
+                {loja.descricao && (
+                  <p className="mt-4 line-clamp-2 text-zinc-300">
+                    {loja.descricao}
+                  </p>
+                )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = criarSlugLoja(loja);
+                  }}
+                  className="mt-5 w-full rounded-2xl bg-yellow-400 px-5 py-4 font-black text-black"
+                >
+                  Conhecer a loja
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {busca && produtosFiltrados.length > 0 && (
         <section className="mx-auto max-w-7xl px-6 pt-14">
           <div className="mb-8 flex items-end justify-between gap-4">
@@ -682,140 +854,28 @@ className={`rounded-3xl border-2 ${
           ))}
         </div>
       </section>
-{lojasPatrocinadas.length > 0 && (
-  <section className="mx-auto max-w-7xl px-6 pb-16">
-    <div className="mb-8">
-      <h2 className="text-4xl font-black text-blue-400">
-        🚀 Lojas Patrocinadas
-      </h2>
 
-      <p className="mt-2 text-zinc-400">
-        Empresas que contrataram destaque máximo no VemVer.
-      </p>
-    </div>
-
-    <div className="grid gap-6 md:grid-cols-2">
-      {lojasPatrocinadas.map((loja) => (
-        <div
-          key={`patrocinada-${loja.id}`}
-          onClick={() => (window.location.href = criarSlugLoja(loja))}
-          className="cursor-pointer rounded-3xl border-2 border-blue-500 bg-gradient-to-br from-blue-500/10 to-zinc-900 p-8 transition hover:scale-[1.02]"
-        >
-          {loja.imagem_url && (
-            <img
-              src={loja.imagem_url}
-              alt={loja.nome}
-              className="h-60 w-full rounded-2xl object-cover"
-            />
-          )}
-
-          <span className="mt-6 inline-block rounded-full bg-blue-500 px-3 py-1 text-sm font-black text-white">
-            🚀 PATROCINADO
-          </span>
-
-          <h3 className="mt-4 text-3xl font-black">
-            {loja.nome}
-          </h3>
-
-          <p className="mt-2 text-zinc-400">
-            {loja.categoria}
-          </p>
-
-          <p className="mt-1 text-zinc-500">
-            📍 {loja.cidade}
-          </p>
-        </div>
-      ))}
-    </div>
-  </section>
-)}
-      {lojasPremium.length > 0 && (
-        <section className="mx-auto max-w-7xl px-6 pb-16">
-          <div className="mb-8">
-            <h2 className="text-4xl font-black text-yellow-400">
-              ⭐ Lojas em Destaque
-            </h2>
-
-            <p className="mt-2 text-zinc-400">
-              Empresas que escolheram aparecer com mais destaque no VemVer.
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            {lojasPremium.map((loja) => (
-              <div
-                key={`premium-${loja.id}`}
-                onClick={() => (window.location.href = criarSlugLoja(loja))}
-                className="cursor-pointer rounded-3xl border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/10 to-zinc-900 p-8 shadow-2xl shadow-yellow-500/20 transition hover:scale-[1.02]"
-              >
-                {loja.imagem_url && (
-                  <img
-                    src={loja.imagem_url}
-                    alt={loja.nome}
-                    className="h-60 w-full rounded-2xl object-cover"
-                  />
-                )}
-
-                <div className="mt-6 flex items-center gap-3">
-                  <span className="rounded-full bg-yellow-400 px-3 py-1 text-sm font-black text-black">
-                    ⭐ PREMIUM
-                  </span>
-                </div>
-
-                <h3 className="mt-4 text-3xl font-black">
-                  {loja.nome}
-                </h3>
-
-                <p className="mt-2 text-zinc-400">
-                  {loja.categoria}
-                </p>
-
-                <p className="mt-1 text-zinc-500">
-                  📍 {loja.cidade}
-                </p>
-
-                {loja.descricao && (
-                  <p className="mt-4 text-zinc-300">
-                    {loja.descricao}
-                  </p>
-                )}
-
-                {loja.whatsapp && (
-                  <a
-                    href={`https://wa.me/55${loja.whatsapp}`}
-                    target="_blank"
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-6 block rounded-2xl bg-yellow-400 px-5 py-4 text-center font-black text-black"
-                  >
-                    Chamar agora
-                  </a>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+   
 
       <section className="mx-auto max-w-7xl px-6 pb-20">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-black">
-              Lojas próximas de você
-            </h2>
+          <h2 className="text-3xl font-black">
+  Outras lojas próximas de você
+</h2>
 
-            <p className="mt-2 text-zinc-400">
-              As lojas com localização cadastrada aparecem primeiro por
-              distância.
-            </p>
+           <p className="mt-2 text-zinc-400">
+  Conheça outros negócios da sua cidade, ordenados pelo ranking e pela distância.
+</p>
           </div>
 
           <span className="rounded-full bg-green-400/15 px-4 py-2 text-sm text-green-300">
-            {lojasFiltradas.length} lojas encontradas
+            {lojasComuns.length} lojas encontradas
           </span>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          {lojasFiltradas.map((loja) => {
+         {lojasComuns.map((loja) => {
             const distancia =
               latitude &&
               longitude &&
@@ -833,11 +893,7 @@ className={`rounded-3xl border-2 ${
               <div
                 key={loja.id || loja.nome}
                 onClick={() => (window.location.href = criarSlugLoja(loja))}
-                className={`cursor-pointer rounded-3xl p-7 transition hover:scale-[1.02] ${
-                  loja.premium
-                    ? "border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/10 to-zinc-900 shadow-2xl shadow-yellow-500/20"
-                    : "border border-white/10 bg-zinc-900 hover:border-green-400/40 hover:shadow-2xl hover:shadow-green-500/10"
-                }`}
+              className="cursor-pointer rounded-3xl border border-white/10 bg-zinc-900 p-7 transition hover:scale-[1.02] hover:border-green-400/40 hover:shadow-2xl hover:shadow-green-500/10"
               >
                 {loja.imagem_url && (
                   <img
@@ -875,16 +931,6 @@ className={`rounded-3xl border-2 ${
                   <p className="mt-1 text-zinc-500">
                     📌 {loja.endereco}
                   </p>
-                )}
-{loja.patrocinado && (
-  <span className="mt-3 inline-block rounded-full bg-blue-500 px-3 py-1 text-sm font-bold text-white">
-    🚀 PATROCINADO
-  </span>
-)}
-                {loja.premium && (
-                  <span className="mt-3 inline-block rounded-full bg-yellow-400 px-3 py-1 text-sm font-bold text-black">
-                    ⭐ PREMIUM
-                  </span>
                 )}
 
                 {loja.whatsapp && (
