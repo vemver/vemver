@@ -6,7 +6,8 @@ import {
 } from "mercadopago";
 import { NextResponse } from "next/server";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseUrl =
+  "https://bwyqesogduegtoookdhu.supabase.co";
 const supabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const mercadoPagoToken =
@@ -70,7 +71,12 @@ export async function POST(request: Request) {
     let merchantPreferenceId = "";
     let merchantLojaId = "";
 
-    if (topic === "merchant_order") {
+    const ehMerchantOrder =
+  String(topic || "")
+    .toLowerCase()
+    .includes("merchant_order")
+
+if (ehMerchantOrder) {
       const merchantOrder = new MerchantOrder(mpClient);
 
       const merchantOrderData: any =
@@ -110,10 +116,31 @@ export async function POST(request: Request) {
     }
 
     const payment = new Payment(mpClient);
+let paymentData: any
 
-    const paymentData: any = await payment.get({
-      id: paymentId,
-    });
+try {
+  paymentData = await payment.get({
+    id: paymentId,
+  })
+} catch (paymentError: any) {
+  console.warn(
+    "Notificação ignorada: pagamento não encontrado:",
+    {
+      topic,
+      eventoId,
+      paymentId,
+      mensagem:
+        paymentError?.message ||
+        "Erro desconhecido",
+    }
+  )
+
+  return NextResponse.json({
+    recebido: true,
+    ignorado: true,
+    motivo: "Pagamento não encontrado",
+  })
+}
 
     const status = paymentData.status;
 

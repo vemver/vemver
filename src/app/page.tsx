@@ -85,7 +85,16 @@ export default function Home() {
       .toLowerCase()
       .replaceAll(" ", "-")}`;
   }
+function criarSlugProduto(produto: any) {
+  const nome = String(produto.nome || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
 
+  return `/produto/${produto.id}-${nome}`
+}
   function calcularDistancia(
     lat1: number,
     lon1: number,
@@ -564,11 +573,42 @@ const produtosHome = produtos
                     {produto.nome}
                   </h3>
 
-                  {produto.preco && (
-                    <p className="mt-2 text-2xl font-black text-green-300">
-                      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
-                    </p>
-                  )}
+                  {produto.promocao &&
+produto.preco_promocional &&
+Number(produto.preco_promocional) > 0 ? (
+  <>
+    <span className="inline-block rounded-full bg-red-500 px-2 py-1 text-xs font-black text-white">
+      🔥 PROMOÇÃO
+    </span>
+
+    <p className="mt-2 text-sm text-zinc-500 line-through">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+
+    <p className="text-2xl font-black text-green-300">
+      R$ {Number(produto.preco_promocional)
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+
+    <p className="text-sm font-bold text-green-400">
+      Economize R$
+      {" "}
+      {(
+        Number(produto.preco) -
+        Number(produto.preco_promocional)
+      )
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+  </>
+) : (
+  produto.preco && (
+    <p className="mt-2 text-2xl font-black text-green-300">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+  )
+)}
 
                   {produto.descricao && (
                     <p className="mt-2 text-zinc-400">
@@ -685,14 +725,42 @@ const produtosHome = produtos
                 {produto.nome}
               </h3>
 
-              {produto.preco && (
-                <p className="mt-2 text-2xl font-black text-green-300">
-                  R${" "}
-                  {Number(produto.preco)
-                    .toFixed(2)
-                    .replace(".", ",")}
-                </p>
-              )}
+              {produto.promocao &&
+produto.preco_promocional &&
+Number(produto.preco_promocional) > 0 ? (
+  <>
+    <span className="inline-block rounded-full bg-red-500 px-2 py-1 text-xs font-black text-white">
+      🔥 PROMOÇÃO
+    </span>
+
+    <p className="mt-2 text-sm text-zinc-500 line-through">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+
+    <p className="text-2xl font-black text-green-300">
+      R$ {Number(produto.preco_promocional)
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+
+    <p className="text-sm font-bold text-green-400">
+      Economize R$
+      {" "}
+      {(
+        Number(produto.preco) -
+        Number(produto.preco_promocional)
+      )
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+  </>
+) : (
+  produto.preco && (
+    <p className="mt-2 text-2xl font-black text-green-300">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+  )
+)}
 
               {produto.descricao && (
                 <p className="mt-2 line-clamp-2 text-sm text-zinc-400">
@@ -716,14 +784,24 @@ const produtosHome = produtos
 
               <div className="mt-5 grid gap-3">
                 <button
-                  onClick={() =>
-                    (window.location.href =
-                      criarSlugLoja(lojaDoProduto))
-                  }
-                  className="rounded-2xl border border-white/15 px-4 py-3 font-bold transition hover:border-green-400/50"
-                >
-                  Ver loja
-                </button>
+  type="button"
+  onClick={() =>
+    (window.location.href = criarSlugProduto(produto))
+  }
+  className="rounded-2xl bg-green-400 px-5 py-4 font-black text-black"
+>
+  Ver produto
+</button>
+
+<button
+  type="button"
+  onClick={() =>
+    (window.location.href = criarSlugLoja(lojaDoProduto))
+  }
+  className="rounded-2xl border border-white/10 px-5 py-4 font-bold"
+>
+  Ver loja
+</button>
 
                 {lojaDoProduto.whatsapp && (
                   <a
@@ -797,11 +875,42 @@ className={`rounded-3xl border-2 ${
               {produto.nome}
             </h3>
 
-            {produto.preco && (
-              <p className="mt-2 text-2xl font-black text-green-300">
-                R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
-              </p>
-            )}
+            {produto.promocao &&
+produto.preco_promocional &&
+Number(produto.preco_promocional) > 0 ? (
+  <>
+    <span className="inline-block rounded-full bg-red-500 px-2 py-1 text-xs font-black text-white">
+      🔥 PROMOÇÃO
+    </span>
+
+    <p className="mt-2 text-sm text-zinc-500 line-through">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+
+    <p className="text-2xl font-black text-green-300">
+      R$ {Number(produto.preco_promocional)
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+
+    <p className="text-sm font-bold text-green-400">
+      Economize R$
+      {" "}
+      {(
+        Number(produto.preco) -
+        Number(produto.preco_promocional)
+      )
+        .toFixed(2)
+        .replace(".", ",")}
+    </p>
+  </>
+) : (
+  produto.preco && (
+    <p className="mt-2 text-2xl font-black text-green-300">
+      R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
+    </p>
+  )
+)}
 
             {produto.descricao && (
               <p className="mt-3 text-zinc-400">
@@ -817,20 +926,18 @@ className={`rounded-3xl border-2 ${
               {loja.nome}
             </p>
 
-            <button
-              onClick={() =>
-                (window.location.href = `/loja/${loja.id}-${loja.nome
-                  .toLowerCase()
-                  .replaceAll(" ", "-")}`)
-              }
-             className={`mt-5 w-full rounded-2xl py-4 font-black ${
-  loja?.patrocinado
-    ? "bg-blue-500 text-white"
-    : "bg-yellow-400 text-black"
-}`}
-            >
-              Ver loja
-            </button>
+<button
+  onClick={() =>
+    (window.location.href = criarSlugProduto(produto))
+  }
+  className={`mt-5 w-full rounded-2xl py-4 font-black ${
+    loja?.patrocinado
+      ? "bg-blue-500 text-white"
+      : "bg-yellow-400 text-black"
+  }`}
+>
+  Ver produto
+</button>
           </div>
         )
       })}
