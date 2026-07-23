@@ -255,7 +255,26 @@ try {
 
     const atualizacaoLoja =
       configuracoesPlano[plano];
+const agora = new Date();
 
+const vencimento = new Date(agora);
+
+switch (pagamento.periodo) {
+  case "mensal":
+    vencimento.setMonth(vencimento.getMonth() + 1);
+    break;
+
+  case "trimestral":
+    vencimento.setMonth(vencimento.getMonth() + 3);
+    break;
+
+  case "anual":
+    vencimento.setFullYear(vencimento.getFullYear() + 1);
+    break;
+
+  default:
+    vencimento.setMonth(vencimento.getMonth() + 1);
+}
     if (!atualizacaoLoja) {
       return NextResponse.json({
         recebido: true,
@@ -266,7 +285,19 @@ try {
 
     const { error: lojaError } = await supabaseAdmin
       .from("lojas")
-      .update(atualizacaoLoja)
+      .update({
+  ...atualizacaoLoja,
+
+  plano_periodo: pagamento.periodo,
+
+  plano_inicio: agora.toISOString(),
+
+  plano_vencimento: vencimento.toISOString(),
+
+  assinatura_status: "ativa",
+
+  renovacao_automatica: false,
+})
       .eq("id", Number(lojaId));
 
     if (lojaError) {
