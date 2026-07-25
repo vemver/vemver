@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/verificar-planos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
