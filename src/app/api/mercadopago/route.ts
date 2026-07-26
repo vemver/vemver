@@ -21,7 +21,10 @@ export async function POST(request: Request) {
 
     const plano = body.plano || "premium";
     const lojaId = body.loja_id;
-
+const precoRecebido = Number(body.preco);
+const periodo = String(body.periodo || "mensal");
+const planoId = Number(body.plano_id);
+const meses = Number(body.meses || 1);
     const planos = {
       premium: {
         titulo: "Plano Premium VemVer",
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
             id: plano,
             title: planoEscolhido.titulo,
             quantity: 1,
-            unit_price: planoEscolhido.preco,
+           unit_price: precoRecebido,
             currency_id: "BRL",
           },
         ],
@@ -84,7 +87,7 @@ export async function POST(request: Request) {
         {
           loja_id: Number(lojaId),
           plano,
-          valor: planoEscolhido.preco,
+          valor: precoRecebido,
           status: "pending",
           mp_preference_id: response.id,
         },
