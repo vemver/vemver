@@ -29,6 +29,7 @@ type PlanoCardProps = {
   codigo: string
   planos: Plano[]
   planoAtual: string | null
+  periodoAtual: string | null
   onSelecionar: (
     codigo: string,
     periodo: PeriodoPlano
@@ -127,6 +128,7 @@ export default function PlanoCard({
   codigo,
   planos,
   planoAtual,
+  periodoAtual,
   onSelecionar,
 }: PlanoCardProps) {
   const planosDoCard = planos
@@ -162,7 +164,18 @@ export default function PlanoCard({
     .trim()
     .toLowerCase()
 
-  const esteEPlanoAtual =
+  const periodoAtualNormalizado = String(
+    periodoAtual || ""
+  )
+    .trim()
+    .toLowerCase()
+
+  const periodoAtualValido =
+    periodoAtualNormalizado === "mensal" ||
+    periodoAtualNormalizado === "trimestral" ||
+    periodoAtualNormalizado === "anual"
+
+  const esteEOCodigoAtual =
     codigoAtual ===
     codigo.trim().toLowerCase()
 
@@ -251,11 +264,16 @@ export default function PlanoCard({
               Number(plano.preco) /
               Number(plano.meses || 1)
 
+            const estaEOpcaoAtual =
+              esteEOCodigoAtual &&
+              periodoAtualNormalizado ===
+                plano.periodo
+
             return (
               <div
                 key={plano.id}
                 className={`overflow-hidden rounded-2xl border transition ${
-                  esteEPlanoAtual
+                  estaEOpcaoAtual
                     ? "border-white/5 bg-zinc-800/70 opacity-60"
                     : "border-white/10 bg-black/20 hover:-translate-y-1 hover:border-white/25"
                 }`}
@@ -305,7 +323,7 @@ export default function PlanoCard({
 
                 <button
                   type="button"
-                  disabled={esteEPlanoAtual}
+                  disabled={estaEOpcaoAtual}
                   onClick={() =>
                     onSelecionar(
                       codigo,
@@ -313,17 +331,17 @@ export default function PlanoCard({
                     )
                   }
                   style={{
-                    background: esteEPlanoAtual
+                    background: estaEOpcaoAtual
                       ? undefined
                       : cor,
                   }}
                   className={`w-full border-t border-white/10 px-4 py-3 text-sm font-black transition ${
-                    esteEPlanoAtual
+                    estaEOpcaoAtual
                       ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
                       : "text-white hover:brightness-110"
                   }`}
                 >
-                  {esteEPlanoAtual
+                  {estaEOpcaoAtual
                     ? "Plano já contratado"
                     : `Escolher ${formatarPeriodo(
                         plano.periodo
@@ -335,10 +353,15 @@ export default function PlanoCard({
         </div>
       )}
 
-      {esteEPlanoAtual && (
+      {esteEOCodigoAtual && (
         <div className="mt-auto pt-6">
           <div className="rounded-2xl border border-green-500/25 bg-green-500/10 p-4 text-center font-black text-green-300">
             ✓ Este é o seu plano atual
+            {periodoAtualValido
+              ? ` (${formatarPeriodo(
+                  periodoAtualNormalizado as PeriodoPlano
+                )})`
+              : ""}
           </div>
         </div>
       )}

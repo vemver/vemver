@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
+import { criarNotificacao } from "@/app/lib/notificacoes";
+import { registrarHistorico } from "@/app/lib/historico";
 const supabaseUrl =
   "https://bwyqesogduegtoookdhu.supabase.co";
 
@@ -16,6 +17,47 @@ type LojaAviso = {
   aviso_3_dias: boolean;
   aviso_1_dia: boolean;
 };
+
+type PagamentoAgendado = {
+  id: number;
+  loja_id: number;
+  plano: string;
+  plano_id: number | null;
+  periodo: string | null;
+  meses: number | null;
+  ativacao_em: string;
+  novo_vencimento: string;
+  mp_payment_id: string | null;
+};
+
+type MudancaAtivada = {
+  pagamentoId: number;
+  lojaId: number;
+  nome: string;
+  planoAnterior: string;
+  planoNovo: string;
+  periodo: string;
+  ativacaoEm: string;
+  novoVencimento: string;
+};
+
+function normalizarTexto(valor: unknown) {
+  return String(valor || "")
+    .trim()
+    .toLowerCase();
+}
+
+function dataValida(valor: unknown) {
+  if (!valor) return null;
+
+  const data = new Date(String(valor));
+
+  if (Number.isNaN(data.getTime())) {
+    return null;
+  }
+
+  return data;
+}
 
 function criarIntervaloDoDia(diasAFrente: number) {
   const inicio = new Date();
@@ -37,7 +79,7 @@ function criarIntervaloDoDia(diasAFrente: number) {
 }
 
 async function buscarLojasParaAviso(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: any,
   diasAFrente: number,
   colunaAviso:
     | "aviso_7_dias"
@@ -80,6 +122,419 @@ async function buscarLojasParaAviso(
 
   return (data || []) as LojaAviso[];
 }
+async function processarAvisos(
+  supabaseAdmin: any,
+  lojas: LojaAviso[],
+  diasRestantes: 7 | 3 | 1,
+  colunaAviso:
+    | "aviso_7_dias"
+    | "aviso_3_dias"
+    | "aviso_1_dia"
+) {
+  let avisosCriados = 0;
+
+  for (const loja of lojas) {
+    const textoDias =
+      diasRestantes === 1
+        ? "amanhã"
+        : `em ${diasRestantes} dias`;
+
+    const titulo =
+      diasRestantes === 1
+        ? "Seu plano vence amanhã"
+        : `Seu plano vence em ${diasRestantes} dias`;
+
+    const mensagem =
+      `O plano ${loja.plano} da loja ${loja.nome} vence ${textoDias}. ` +
+      "Renove para continuar utilizando todos os benefícios.";
+
+    try {
+      await criarNotificacao({
+        lojaId: Number(loja.id),
+        titulo,
+        mensagem,
+        tipo: "assinatura",
+        icone: "warning",
+        link: `/lojista/loja/${loja.id}`,
+      });
+
+      await registrarHistorico({
+        lojaId: Number(loja.id),
+        evento: `aviso_${diasRestantes}_dias`,
+        planoAnterior: loja.plano,
+        planoNovo: loja.plano,
+        mensagem,
+        referencia: `cron-aviso-${diasRestantes}-dias`,
+      });
+
+      const { error: marcarAvisoError } =
+        await supabaseAdmin
+          .from("lojas")
+          .update({
+            [colunaAviso]: true,
+          })
+          .eq("id", loja.id);
+
+      if (marcarAvisoError) {
+        throw new Error(
+          `Erro ao marcar aviso como enviado: ${marcarAvisoError.message}`
+        );
+      }
+
+      avisosCriados++;
+    } catch (error: any) {
+      console.error(
+        `Erro ao processar aviso de ${diasRestantes} dia(s) da loja ${loja.id}:`,
+        error?.message || error
+      );
+    }
+  }
+
+  return avisosCriados;
+}
+
+async function processarMudancasAgendadas(
+  supabaseAdmin: any,
+  agora: Date
+) {
+  const agoraIso = agora.toISOString();
+
+  const {
+    data: pagamentosAgendados,
+    error: buscarAgendadosError,
+  } = await supabaseAdmin
+    .from("pagamentos")
+    .select(
+      `
+        id,
+        loja_id,
+        plano,
+        plano_id,
+        periodo,
+        meses,
+        ativacao_em,
+        novo_vencimento,
+        mp_payment_id
+      `
+    )
+    .eq("status", "approved")
+    .eq("tipo_mudanca", "downgrade")
+    .not("processado_em", "is", null)
+    .is("ativado_em", null)
+    .not("ativacao_em", "is", null)
+    .not("novo_vencimento", "is", null)
+    .lte("ativacao_em", agoraIso)
+    .order("ativacao_em", {
+      ascending: true,
+    });
+
+  if (buscarAgendadosError) {
+    throw new Error(
+      `Erro ao buscar mudanças agendadas: ${buscarAgendadosError.message}`
+    );
+  }
+
+  const mudancasAtivadas: MudancaAtivada[] =
+    [];
+
+  for (
+    const pagamento of (
+      pagamentosAgendados || []
+    ) as PagamentoAgendado[]
+  ) {
+    try {
+      const lojaId = Number(
+        pagamento.loja_id
+      );
+
+      if (
+        !Number.isInteger(lojaId) ||
+        lojaId <= 0
+      ) {
+        throw new Error(
+          "Pagamento agendado sem loja válida"
+        );
+      }
+
+      const ativacaoEm = dataValida(
+        pagamento.ativacao_em
+      );
+
+      const novoVencimento = dataValida(
+        pagamento.novo_vencimento
+      );
+
+      if (
+        !ativacaoEm ||
+        !novoVencimento
+      ) {
+        throw new Error(
+          "Pagamento agendado com datas inválidas"
+        );
+      }
+
+      let planoQuery = supabaseAdmin
+        .from("planos_catalogo")
+        .select(
+          `
+            id,
+            codigo,
+            periodo,
+            meses,
+            limite_lojas
+          `
+        );
+
+      if (pagamento.plano_id) {
+        planoQuery = planoQuery.eq(
+          "id",
+          Number(pagamento.plano_id)
+        );
+      } else {
+        planoQuery = planoQuery
+          .eq(
+            "codigo",
+            normalizarTexto(
+              pagamento.plano
+            )
+          )
+          .eq(
+            "periodo",
+            normalizarTexto(
+              pagamento.periodo
+            )
+          );
+      }
+
+      const {
+        data: planoCatalogo,
+        error: planoError,
+      } = await planoQuery.maybeSingle();
+
+      if (planoError) {
+        throw new Error(
+          `Erro ao consultar o novo plano: ${planoError.message}`
+        );
+      }
+
+      if (!planoCatalogo) {
+        throw new Error(
+          "Novo plano não encontrado no catálogo"
+        );
+      }
+
+      const planoNovo = normalizarTexto(
+        planoCatalogo.codigo
+      );
+
+      const periodoNovo =
+        normalizarTexto(
+          pagamento.periodo ||
+            planoCatalogo.periodo
+        );
+
+      const codigosPermitidos = [
+        "premium",
+        "patrocinado",
+        "multiunidade",
+      ];
+
+      const periodosPermitidos = [
+        "mensal",
+        "trimestral",
+        "anual",
+      ];
+
+      if (
+        !codigosPermitidos.includes(
+          planoNovo
+        ) ||
+        !periodosPermitidos.includes(
+          periodoNovo
+        )
+      ) {
+        throw new Error(
+          "Plano ou período agendado inválido"
+        );
+      }
+
+      const {
+        data: lojaAtual,
+        error: lojaError,
+      } = await supabaseAdmin
+        .from("lojas")
+        .select(
+          `
+            id,
+            nome,
+            plano,
+            user_id
+          `
+        )
+        .eq("id", lojaId)
+        .maybeSingle();
+
+      if (lojaError) {
+        throw new Error(
+          `Erro ao consultar a loja: ${lojaError.message}`
+        );
+      }
+
+      if (!lojaAtual) {
+        throw new Error(
+          "Loja da mudança agendada não encontrada"
+        );
+      }
+
+      const planoAnterior =
+        normalizarTexto(
+          lojaAtual.plano || "gratis"
+        ) || "gratis";
+
+      const { error: atualizarLojaError } =
+        await supabaseAdmin
+          .from("lojas")
+          .update({
+            plano: planoNovo,
+            premium: true,
+            patrocinado:
+              planoNovo ===
+              "patrocinado",
+            limite_lojas: Number(
+              planoCatalogo.limite_lojas ||
+                1
+            ),
+            plano_periodo:
+              periodoNovo,
+            plano_inicio:
+              ativacaoEm.toISOString(),
+            plano_vencimento:
+              novoVencimento.toISOString(),
+            assinatura_status: "ativa",
+            renovacao_automatica: false,
+            cortesia_ate: null,
+            aviso_7_dias: false,
+            aviso_3_dias: false,
+            aviso_1_dia: false,
+            aviso_vencido: false,
+          })
+          .eq("id", lojaId);
+
+      if (atualizarLojaError) {
+        throw new Error(
+          `Erro ao ativar o novo plano: ${atualizarLojaError.message}`
+        );
+      }
+
+      const ativadoEm =
+        new Date().toISOString();
+
+      const {
+        data: pagamentoAtivado,
+        error: finalizarMudancaError,
+      } = await supabaseAdmin
+        .from("pagamentos")
+        .update({
+          ativado_em: ativadoEm,
+          updated_at: ativadoEm,
+        })
+        .eq("id", pagamento.id)
+        .is("ativado_em", null)
+        .select("id")
+        .maybeSingle();
+
+      if (finalizarMudancaError) {
+        throw new Error(
+          `Erro ao finalizar a mudança: ${finalizarMudancaError.message}`
+        );
+      }
+
+      if (!pagamentoAtivado) {
+        continue;
+      }
+
+      const dataVencimentoFormatada =
+        novoVencimento.toLocaleDateString(
+          "pt-BR",
+          {
+            timeZone:
+              "America/Sao_Paulo",
+          }
+        );
+
+      const mensagem =
+        `A mudança agendada da loja ${lojaAtual.nome} foi concluída. ` +
+        `O plano ${planoNovo} está ativo até ` +
+        `${dataVencimentoFormatada}.`;
+
+      const resultados =
+        await Promise.allSettled([
+          criarNotificacao({
+            lojaId,
+            titulo:
+              "Mudança de plano concluída",
+            mensagem,
+            tipo: "assinatura",
+            icone: "payment",
+            link:
+              `/lojista/loja/${lojaId}`,
+          }),
+
+          registrarHistorico({
+            lojaId,
+            evento:
+              "downgrade_ativado",
+            planoAnterior,
+            planoNovo,
+            mensagem,
+            usuarioId:
+              lojaAtual.user_id ||
+              null,
+            referencia:
+              pagamento.mp_payment_id ||
+              `pagamento-${pagamento.id}`,
+          }),
+        ]);
+
+      resultados.forEach(
+        (resultado, indice) => {
+          if (
+            resultado.status ===
+            "rejected"
+          ) {
+            console.error(
+              indice === 0
+                ? `Erro ao criar notificação da mudança ${pagamento.id}:`
+                : `Erro ao registrar histórico da mudança ${pagamento.id}:`,
+              resultado.reason
+            );
+          }
+        }
+      );
+
+      mudancasAtivadas.push({
+        pagamentoId:
+          Number(pagamento.id),
+        lojaId,
+        nome: lojaAtual.nome,
+        planoAnterior,
+        planoNovo,
+        periodo: periodoNovo,
+        ativacaoEm:
+          ativacaoEm.toISOString(),
+        novoVencimento:
+          novoVencimento.toISOString(),
+      });
+    } catch (error: any) {
+      console.error(
+        `Erro ao processar mudança agendada ${pagamento.id}:`,
+        error?.message || error
+      );
+    }
+  }
+
+  return mudancasAtivadas;
+}
 
 export async function GET() {
   try {
@@ -101,6 +556,18 @@ export async function GET() {
 
     const agora = new Date();
     const agoraIso = agora.toISOString();
+
+    /*
+     * 0. Ativa downgrades já pagos cuja data
+     * programada chegou. Esta etapa precisa
+     * acontecer antes da verificação de
+     * vencimento e da entrada em cortesia.
+     */
+    const mudancasAgendadasAtivadas =
+      await processarMudancasAgendadas(
+        supabaseAdmin,
+        agora
+      );
 
     /*
      * 1. Identifica lojas que precisam receber avisos.
@@ -132,7 +599,29 @@ export async function GET() {
         "aviso_1_dia"
       ),
     ]);
+const avisos7DiasCriados =
+  await processarAvisos(
+    supabaseAdmin,
+    lojasAviso7Dias,
+    7,
+    "aviso_7_dias"
+  );
 
+const avisos3DiasCriados =
+  await processarAvisos(
+    supabaseAdmin,
+    lojasAviso3Dias,
+    3,
+    "aviso_3_dias"
+  );
+
+const avisos1DiaCriados =
+  await processarAvisos(
+    supabaseAdmin,
+    lojasAviso1Dia,
+    1,
+    "aviso_1_dia"
+  );
     /*
      * 2. Localiza assinaturas ativas que venceram.
      *
@@ -225,7 +714,42 @@ export async function GET() {
       lojasEmCortesia =
         lojasParaCortesia.length;
     }
+for (const loja of lojasParaCortesia) {
+  const mensagem =
+    `O plano ${loja.plano} da loja ${loja.nome} venceu. ` +
+    "Você recebeu 3 dias de cortesia para renovar sem perder os benefícios.";
 
+  const resultados = await Promise.allSettled([
+    criarNotificacao({
+      lojaId: Number(loja.id),
+      titulo: "Você recebeu 3 dias de cortesia",
+      mensagem,
+      tipo: "cortesia",
+      icone: "gift",
+      link: `/lojista/loja/${loja.id}`,
+    }),
+
+    registrarHistorico({
+      lojaId: Number(loja.id),
+      evento: "inicio_cortesia",
+      planoAnterior: loja.plano,
+      planoNovo: loja.plano,
+      mensagem,
+      referencia: "cron-inicio-cortesia",
+    }),
+  ]);
+
+  resultados.forEach((resultado, indice) => {
+    if (resultado.status === "rejected") {
+      console.error(
+        indice === 0
+          ? `Erro ao criar notificação de cortesia da loja ${loja.id}:`
+          : `Erro ao registrar histórico de cortesia da loja ${loja.id}:`,
+        resultado.reason
+      );
+    }
+  });
+}
     /*
      * 3. Localiza lojas cujo período
      * de cortesia já terminou.
@@ -315,11 +839,53 @@ export async function GET() {
       lojasRetornadasAoGratis =
         lojasComCortesiaVencida.length;
     }
+for (const loja of lojasComCortesiaVencida) {
+  const mensagem =
+    `O período de cortesia da loja ${loja.nome} terminou. ` +
+    "A loja voltou automaticamente para o plano grátis.";
 
+  const resultados = await Promise.allSettled([
+    criarNotificacao({
+      lojaId: Number(loja.id),
+      titulo: "Período de cortesia encerrado",
+      mensagem,
+      tipo: "assinatura",
+      icone: "warning",
+      link: `/lojista/loja/${loja.id}`,
+    }),
+
+    registrarHistorico({
+      lojaId: Number(loja.id),
+      evento: "fim_cortesia",
+      planoAnterior: loja.plano,
+      planoNovo: "gratis",
+      mensagem,
+      referencia: "cron-fim-cortesia",
+    }),
+  ]);
+
+  resultados.forEach((resultado, indice) => {
+    if (resultado.status === "rejected") {
+      console.error(
+        indice === 0
+          ? `Erro ao criar notificação de fim de cortesia da loja ${loja.id}:`
+          : `Erro ao registrar histórico de fim de cortesia da loja ${loja.id}:`,
+        resultado.reason
+      );
+    }
+  });
+}
     return NextResponse.json({
       sucesso: true,
       mensagem:
         "Verificação de assinaturas concluída.",
+
+      mudancasAgendadas: {
+        ativadas:
+          mudancasAgendadasAtivadas.length,
+        lojas:
+          mudancasAgendadasAtivadas,
+      },
 
       avisosPendentes: {
         seteDias: lojasAviso7Dias.length,

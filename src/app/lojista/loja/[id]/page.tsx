@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../../supabase"
 import GaleriaProduto from "./components/GaleriaProduto"
 import GerenciarPlanos from "../components/GerenciarPlanos"
+import NotificationBell from "../../../components/NotificationBell"
+import HistoricoAssinaturas from "../../../components/HistoricoAssinaturas"
 type PlanoCatalogo = {
   id: number
   codigo: string
@@ -473,14 +475,117 @@ function atualizarImagemPrincipalProduto(
 
     await carregarProdutos(userId, lojaId)
   }
+async function simularPlano(
+  planoEscolhido: PlanoCatalogo
+) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
 
+  if (
+    sessionError ||
+    !session?.access_token
+  ) {
+    throw new Error(
+      "Sua sessão expirou. Faça login novamente."
+    )
+  }
+
+  if (!loja?.id) {
+    throw new Error(
+      "Não foi possível identificar a loja."
+    )
+  }
+
+  const response = await fetch(
+    "/api/mercadopago",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization:
+          `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        plano_id: planoEscolhido.id,
+        loja_id: loja.id,
+        modo: "simulacao",
+      }),
+    }
+  )
+
+const data = await response
+  .json()
+  .catch(() => null)
+
+if (!response.ok) {
+  throw new Error(
+    data?.detalhes ||
+      data?.error ||
+      "Não foi possível calcular a mudança de plano."
+  )
+}
+
+const respostaValida =
+  data &&
+  data.simulacao === true &&
+  typeof data.tipo_mudanca === "string" &&
+  typeof data.tipo_mudanca_nome === "string" &&
+  typeof data.plano_novo === "string" &&
+  typeof data.periodo_novo === "string" &&
+  Number.isFinite(Number(data.meses)) &&
+  Number.isFinite(Number(data.valor_tabela)) &&
+  Number.isFinite(Number(data.credito_aplicado)) &&
+  Number.isFinite(Number(data.dias_restantes_credito)) &&
+  Number.isFinite(Number(data.valor_final)) &&
+  typeof data.ativacao_em === "string" &&
+  !Number.isNaN(
+    new Date(data.ativacao_em).getTime()
+  ) &&
+  typeof data.novo_vencimento === "string" &&
+  !Number.isNaN(
+    new Date(data.novo_vencimento).getTime()
+  )
+
+if (!respostaValida) {
+  console.error(
+    "Resposta inválida da simulação:",
+    data
+  )
+
+  throw new Error(
+    "O servidor retornou uma simulação incompleta. Nenhum pagamento foi iniciado."
+  )
+}
+
+return {
+  ...data,
+  meses: Number(data.meses),
+  valor_tabela: Number(
+    data.valor_tabela
+  ),
+  credito_aplicado: Number(
+    data.credito_aplicado
+  ),
+  dias_restantes_credito: Number(
+    data.dias_restantes_credito
+  ),
+  valor_final: Number(
+    data.valor_final
+  ),
+}
+}
   async function assinarPlano(
   planoEscolhido: PlanoCatalogo
 ) {
   if (processandoPagamento) return
 
   if (
-    planoJaContratado(planoEscolhido.codigo)
+    planoJaContratado(
+      planoEscolhido.codigo,
+      planoEscolhido.periodo
+    )
   ) {
     alert(
       "Este já é o plano atual da sua loja."
@@ -491,21 +596,33 @@ function atualizarImagemPrincipalProduto(
   try {
     setProcessandoPagamento(true)
 
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (
+      sessionError ||
+      !session?.access_token
+    ) {
+      alert(
+        "Sua sessão expirou. Faça login novamente."
+      )
+      window.location.href = "/login"
+      return
+    }
+
     const response = await fetch(
       "/api/mercadopago",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization:
+            `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          plano: planoEscolhido.codigo,
           plano_id: planoEscolhido.id,
-          periodo: planoEscolhido.periodo,
-          meses: planoEscolhido.meses,
-          preco: Number(
-            planoEscolhido.preco
-          ),
           loja_id: loja.id,
         }),
       }
@@ -514,8 +631,8 @@ function atualizarImagemPrincipalProduto(
     const data = await response.json()
 
     const checkout =
-      data.sandbox_init_point ||
-      data.init_point
+      data.init_point ||
+      data.sandbox_init_point
 
     if (!response.ok || !checkout) {
       alert(
@@ -562,7 +679,10 @@ function atualizarImagemPrincipalProduto(
     await carregarProdutos(userId, lojaId)
   }
  
-function planoJaContratado(plano: string) {
+function planoJaContratado(
+  plano: string,
+  periodo: PlanoCatalogo["periodo"]
+) {
   const planoAtual = String(
     loja?.plano ||
       (loja?.patrocinado
@@ -570,9 +690,21 @@ function planoJaContratado(plano: string) {
         : loja?.premium
           ? "premium"
           : "gratis")
-  ).toLowerCase()
+  )
+    .trim()
+    .toLowerCase()
 
-  return planoAtual === plano
+  const periodoAtual = String(
+    loja?.plano_periodo || ""
+  )
+    .trim()
+    .toLowerCase()
+
+  return (
+    planoAtual ===
+      plano.trim().toLowerCase() &&
+    periodoAtual === periodo
+  )
 }
 
   function linkPublico() {
@@ -624,16 +756,20 @@ function planoJaContratado(plano: string) {
             </p>
           </div>
 
-          <a
-            href={linkPublico()}
-            target="_blank"
-            className="rounded-2xl border border-white/20 px-5 py-3 font-bold"
-          >
-            Ver loja pública
-          </a>
+          <div className="flex items-center gap-3">
+  <NotificationBell lojaId={Number(loja.id)} />
+
+  <a
+    href={linkPublico()}
+    target="_blank"
+    className="rounded-2xl border border-white/20 px-5 py-3 font-bold"
+  >
+    Ver loja pública
+  </a>
+</div>
         </div>
 
-        <section className="mt-10 grid gap-4 md:grid-cols-5">
+        <section className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="rounded-3xl bg-zinc-900 p-6">
             <p className="text-zinc-400">Produtos</p>
             <h3 className="text-4xl font-black">
@@ -675,9 +811,9 @@ function planoJaContratado(plano: string) {
             </h3>
           </div>
 
-          <div className="rounded-3xl bg-zinc-900 p-6">
+          <div className="min-w-0 overflow-hidden rounded-3xl bg-zinc-900 p-6">
             <p className="text-zinc-400">Plano</p>
-            <h3 className="text-2xl font-black uppercase">
+            <h3 className="max-w-full whitespace-nowrap text-[clamp(1rem,1.2vw,1.125rem)] font-black uppercase leading-tight tracking-[-0.04em]">
               {loja.plano ||
                 (loja.premium ? "premium" : "grátis")}
             </h3>
@@ -708,16 +844,22 @@ function planoJaContratado(plano: string) {
           ? "premium"
           : "gratis")
     }
+    periodoAtual={
+      loja.plano_periodo || null
+    }
     processandoPagamento={
       processandoPagamento
     }
     onConfirmarPagamento={
-      assinarPlano
-    }
-  />
+  assinarPlano
+}
+onSimularPagamento={
+  simularPlano
+}
+/>
 </div>
         </section>
-
+<HistoricoAssinaturas lojaId={Number(loja.id)} />
         <section className="mt-10 rounded-3xl border border-green-400/20 bg-green-400/5 p-6">
           <h2 className="text-3xl font-black">
             {produtoEditando
