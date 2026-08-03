@@ -6,6 +6,41 @@ import { supabase } from "../supabase";
 const VERSAO_DOCUMENTOS = "1.0";
 const TAMANHO_MAXIMO_IMAGEM = 5 * 1024 * 1024;
 
+type MunicipioIBGE = {
+  id: number;
+  nome: string;
+};
+
+const ESTADOS_BRASIL = [
+  { sigla: "AC", nome: "Acre" },
+  { sigla: "AL", nome: "Alagoas" },
+  { sigla: "AP", nome: "Amapá" },
+  { sigla: "AM", nome: "Amazonas" },
+  { sigla: "BA", nome: "Bahia" },
+  { sigla: "CE", nome: "Ceará" },
+  { sigla: "DF", nome: "Distrito Federal" },
+  { sigla: "ES", nome: "Espírito Santo" },
+  { sigla: "GO", nome: "Goiás" },
+  { sigla: "MA", nome: "Maranhão" },
+  { sigla: "MT", nome: "Mato Grosso" },
+  { sigla: "MS", nome: "Mato Grosso do Sul" },
+  { sigla: "MG", nome: "Minas Gerais" },
+  { sigla: "PA", nome: "Pará" },
+  { sigla: "PB", nome: "Paraíba" },
+  { sigla: "PR", nome: "Paraná" },
+  { sigla: "PE", nome: "Pernambuco" },
+  { sigla: "PI", nome: "Piauí" },
+  { sigla: "RJ", nome: "Rio de Janeiro" },
+  { sigla: "RN", nome: "Rio Grande do Norte" },
+  { sigla: "RS", nome: "Rio Grande do Sul" },
+  { sigla: "RO", nome: "Rondônia" },
+  { sigla: "RR", nome: "Roraima" },
+  { sigla: "SC", nome: "Santa Catarina" },
+  { sigla: "SP", nome: "São Paulo" },
+  { sigla: "SE", nome: "Sergipe" },
+  { sigla: "TO", nome: "Tocantins" },
+] as const;
+
 const DOCUMENTOS_LOJISTA = [
   "termos_uso",
   "politica_privacidade",
@@ -16,7 +51,11 @@ export default function CadastrarLoja() {
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [uf, setUf] = useState("");
   const [cidade, setCidade] = useState("");
+  const [municipios, setMunicipios] = useState<MunicipioIBGE[]>([]);
+  const [carregandoMunicipios, setCarregandoMunicipios] = useState(false);
+  const [erroMunicipios, setErroMunicipios] = useState("");
   const [endereco, setEndereco] = useState("");
   const [descricao, setDescricao] = useState("");
   const [imagem, setImagem] = useState<File | null>(null);
@@ -36,6 +75,54 @@ export default function CadastrarLoja() {
       }
     };
   }, [imagemPreview]);
+
+  useEffect(() => {
+    if (!uf) {
+      setMunicipios([]);
+      setCidade("");
+      setErroMunicipios("");
+      return;
+    }
+
+    carregarMunicipios(uf);
+  }, [uf]);
+
+  async function carregarMunicipios(ufSelecionada: string) {
+    setCarregandoMunicipios(true);
+    setErroMunicipios("");
+    setMunicipios([]);
+    setCidade("");
+
+    try {
+      const resposta = await fetch(
+        `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${ufSelecionada}/municipios?orderBy=nome`,
+      );
+
+      if (!resposta.ok) {
+        throw new Error("Não foi possível consultar as cidades.");
+      }
+
+      const dados = (await resposta.json()) as MunicipioIBGE[];
+
+      if (!Array.isArray(dados)) {
+        throw new Error("A lista de cidades recebida é inválida.");
+      }
+
+      setMunicipios(
+        dados.map((municipio) => ({
+          id: Number(municipio.id),
+          nome: String(municipio.nome),
+        })),
+      );
+    } catch (error) {
+      console.error("Erro ao carregar cidades do IBGE:", error);
+      setErroMunicipios(
+        "Não foi possível carregar as cidades. Tente novamente.",
+      );
+    } finally {
+      setCarregandoMunicipios(false);
+    }
+  }
 
   async function obterDestinoPendente(userId: string) {
     const { data: aceites, error: aceitesError } = await supabase
@@ -164,8 +251,13 @@ export default function CadastrarLoja() {
       return false;
     }
 
-    if (cidade.trim().length < 2) {
-      alert("Digite a cidade da loja.");
+    if (!ESTADOS_BRASIL.some((estado) => estado.sigla === uf)) {
+      alert("Selecione o estado da loja.");
+      return false;
+    }
+
+    if (!municipios.some((municipio) => municipio.nome === cidade)) {
+      alert("Selecione a cidade da loja.");
       return false;
     }
 
@@ -315,6 +407,7 @@ export default function CadastrarLoja() {
         categoria: categoria.trim(),
         whatsapp: somenteNumeros(whatsapp),
         cidade: cidade.trim(),
+        uf,
         endereco: endereco.trim(),
         descricao: descricao.trim(),
         imagem_url: imagemUrl,
@@ -399,14 +492,72 @@ export default function CadastrarLoja() {
             className="w-full rounded-2xl bg-zinc-800 p-4 outline-none focus:ring-2 focus:ring-green-400/40 disabled:opacity-60"
           />
 
-          <input
-            value={cidade}
-            disabled={salvando}
-            onChange={(evento) => setCidade(evento.target.value)}
-            placeholder="Cidade"
-            autoComplete="address-level2"
-            className="w-full rounded-2xl bg-zinc-800 p-4 outline-none focus:ring-2 focus:ring-green-400/40 disabled:opacity-60"
-          />
+          <div className="grid gap-4 md:grid-cols-[0.75fr_1.25fr]">
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-zinc-300">
+                Estado
+              </span>
+
+              <select
+                value={uf}
+                disabled={salvando}
+                onChange={(evento) => setUf(evento.target.value)}
+                autoComplete="address-level1"
+                className="w-full rounded-2xl bg-zinc-800 p-4 outline-none focus:ring-2 focus:ring-green-400/40 disabled:opacity-60"
+              >
+                <option value="">Selecione o estado</option>
+
+                {ESTADOS_BRASIL.map((estado) => (
+                  <option key={estado.sigla} value={estado.sigla}>
+                    {estado.nome} ({estado.sigla})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-zinc-300">
+                Cidade
+              </span>
+
+              <select
+                value={cidade}
+                disabled={salvando || !uf || carregandoMunicipios}
+                onChange={(evento) => setCidade(evento.target.value)}
+                autoComplete="address-level2"
+                className="w-full rounded-2xl bg-zinc-800 p-4 outline-none focus:ring-2 focus:ring-green-400/40 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">
+                  {!uf
+                    ? "Escolha primeiro o estado"
+                    : carregandoMunicipios
+                      ? "Carregando cidades..."
+                      : "Selecione a cidade"}
+                </option>
+
+                {municipios.map((municipio) => (
+                  <option key={municipio.id} value={municipio.nome}>
+                    {municipio.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {erroMunicipios && (
+            <div className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">
+              <p>{erroMunicipios}</p>
+
+              <button
+                type="button"
+                disabled={salvando || !uf || carregandoMunicipios}
+                onClick={() => carregarMunicipios(uf)}
+                className="mt-3 font-black text-red-100 underline disabled:opacity-50"
+              >
+                Tentar carregar novamente
+              </button>
+            </div>
+          )}
 
           <input
             value={endereco}

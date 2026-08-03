@@ -22,6 +22,42 @@ limite_imagens_produto: number | null
   estatisticas_nivel: string
   ativo: boolean
 }
+
+type MunicipioIBGE = {
+  id: number
+  nome: string
+}
+
+const ESTADOS_BRASIL = [
+  { sigla: "AC", nome: "Acre" },
+  { sigla: "AL", nome: "Alagoas" },
+  { sigla: "AP", nome: "Amapá" },
+  { sigla: "AM", nome: "Amazonas" },
+  { sigla: "BA", nome: "Bahia" },
+  { sigla: "CE", nome: "Ceará" },
+  { sigla: "DF", nome: "Distrito Federal" },
+  { sigla: "ES", nome: "Espírito Santo" },
+  { sigla: "GO", nome: "Goiás" },
+  { sigla: "MA", nome: "Maranhão" },
+  { sigla: "MT", nome: "Mato Grosso" },
+  { sigla: "MS", nome: "Mato Grosso do Sul" },
+  { sigla: "MG", nome: "Minas Gerais" },
+  { sigla: "PA", nome: "Pará" },
+  { sigla: "PB", nome: "Paraíba" },
+  { sigla: "PR", nome: "Paraná" },
+  { sigla: "PE", nome: "Pernambuco" },
+  { sigla: "PI", nome: "Piauí" },
+  { sigla: "RJ", nome: "Rio de Janeiro" },
+  { sigla: "RN", nome: "Rio Grande do Norte" },
+  { sigla: "RS", nome: "Rio Grande do Sul" },
+  { sigla: "RO", nome: "Rondônia" },
+  { sigla: "RR", nome: "Roraima" },
+  { sigla: "SC", nome: "Santa Catarina" },
+  { sigla: "SP", nome: "São Paulo" },
+  { sigla: "SE", nome: "Sergipe" },
+  { sigla: "TO", nome: "Tocantins" },
+] as const
+
 export default function LojaGerenciarPage({
   params,
 }: {
@@ -32,6 +68,14 @@ export default function LojaGerenciarPage({
   const [lojaId, setLojaId] = useState("")
   const [loja, setLoja] = useState<any | null>(null)
   const [produtos, setProdutos] = useState<any[]>([])
+  const [ufLoja, setUfLoja] = useState("")
+  const [cidadeLoja, setCidadeLoja] = useState("")
+  const [municipiosLoja, setMunicipiosLoja] = useState<MunicipioIBGE[]>([])
+  const [carregandoMunicipiosLoja, setCarregandoMunicipiosLoja] =
+    useState(false)
+  const [erroMunicipiosLoja, setErroMunicipiosLoja] = useState("")
+  const [salvandoLocalizacaoLoja, setSalvandoLocalizacaoLoja] =
+    useState(false)
 const [planosCatalogo, setPlanosCatalogo] = useState<PlanoCatalogo[]>([])
 const [carregandoPlanos, setCarregandoPlanos] = useState(true)
 const [processandoPagamento, setProcessandoPagamento] = useState(false)
@@ -61,6 +105,52 @@ const [processandoPagamento, setProcessandoPagamento] = useState(false)
 
     iniciar()
   }, [params])
+
+  useEffect(() => {
+    if (!ufLoja) {
+      setMunicipiosLoja([])
+      setErroMunicipiosLoja("")
+      return
+    }
+
+    carregarMunicipiosLoja(ufLoja)
+  }, [ufLoja])
+
+  async function carregarMunicipiosLoja(ufSelecionada: string) {
+    setCarregandoMunicipiosLoja(true)
+    setErroMunicipiosLoja("")
+    setMunicipiosLoja([])
+
+    try {
+      const resposta = await fetch(
+        `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${ufSelecionada}/municipios?orderBy=nome`
+      )
+
+      if (!resposta.ok) {
+        throw new Error("Não foi possível consultar as cidades.")
+      }
+
+      const dados = (await resposta.json()) as MunicipioIBGE[]
+
+      if (!Array.isArray(dados)) {
+        throw new Error("A lista de cidades recebida é inválida.")
+      }
+
+      setMunicipiosLoja(
+        dados.map((municipio) => ({
+          id: Number(municipio.id),
+          nome: String(municipio.nome),
+        }))
+      )
+    } catch (error) {
+      console.error("Erro ao carregar cidades do IBGE:", error)
+      setErroMunicipiosLoja(
+        "Não foi possível carregar as cidades. Tente novamente."
+      )
+    } finally {
+      setCarregandoMunicipiosLoja(false)
+    }
+  }
 
   function converterNumero(valor: string) {
     if (!valor.trim()) return null
@@ -112,6 +202,8 @@ console.log("Usuário:", user.id)
     }
 
    setLoja(lojaData)
+   setCidadeLoja(String(lojaData.cidade || ""))
+   setUfLoja(String(lojaData.uf || "").trim().toUpperCase())
 
 await Promise.all([
   carregarProdutos(user.id, idLoja),
@@ -119,6 +211,59 @@ await Promise.all([
 ])
 
 setCarregando(false)
+  }
+
+  async function salvarLocalizacaoLoja() {
+    if (salvandoLocalizacaoLoja || !loja || !userId) return
+
+    const estadoValido = ESTADOS_BRASIL.some(
+      (estado) => estado.sigla === ufLoja
+    )
+
+    if (!estadoValido) {
+      alert("Selecione o estado da loja.")
+      return
+    }
+
+    const cidadeValida = municipiosLoja.some(
+      (municipio) => municipio.nome === cidadeLoja
+    )
+
+    if (!cidadeValida) {
+      alert("Selecione a cidade da loja.")
+      return
+    }
+
+    setSalvandoLocalizacaoLoja(true)
+
+    try {
+      const { data, error } = await supabase
+        .from("lojas")
+        .update({
+          uf: ufLoja,
+          cidade: cidadeLoja,
+        })
+        .eq("id", Number(loja.id))
+        .eq("user_id", userId)
+        .select("*")
+        .single()
+
+      if (error || !data) {
+        console.error("Erro ao atualizar localização da loja:", error)
+        alert("Não foi possível atualizar a localização da loja.")
+        return
+      }
+
+      setLoja(data)
+      setUfLoja(String(data.uf || "").trim().toUpperCase())
+      setCidadeLoja(String(data.cidade || ""))
+      alert("Localização da loja atualizada com sucesso.")
+    } catch (error) {
+      console.error("Erro inesperado ao atualizar localização:", error)
+      alert("Não foi possível atualizar a localização da loja.")
+    } finally {
+      setSalvandoLocalizacaoLoja(false)
+    }
   }
 
   async function carregarProdutos(
@@ -818,6 +963,117 @@ function planoJaContratado(
                 (loja.premium ? "premium" : "grátis")}
             </h3>
           </div>
+        </section>
+
+        <section className="mt-8 rounded-3xl border border-green-400/20 bg-green-400/5 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-3xl font-black">Localização da loja</h2>
+
+              <p className="mt-2 text-zinc-400">
+                Escolha o estado e a cidade em que esta unidade atende.
+              </p>
+            </div>
+
+            {loja.cidade && (
+              <span className="rounded-full border border-green-400/20 bg-green-400/10 px-4 py-2 text-sm font-bold text-green-200">
+                {loja.cidade}
+                {loja.uf ? ` - ${loja.uf}` : ""}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-[0.75fr_1.25fr_auto] md:items-end">
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-zinc-300">
+                Estado
+              </span>
+
+              <select
+                value={ufLoja}
+                disabled={salvandoLocalizacaoLoja}
+                onChange={(evento) => {
+                  setCidadeLoja("")
+                  setUfLoja(evento.target.value)
+                }}
+                autoComplete="address-level1"
+                className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-5 py-4 outline-none focus:border-green-400/50 disabled:opacity-60"
+              >
+                <option value="">Selecione o estado</option>
+
+                {ESTADOS_BRASIL.map((estado) => (
+                  <option key={estado.sigla} value={estado.sigla}>
+                    {estado.nome} ({estado.sigla})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-zinc-300">
+                Cidade
+              </span>
+
+              <select
+                value={cidadeLoja}
+                disabled={
+                  salvandoLocalizacaoLoja ||
+                  !ufLoja ||
+                  carregandoMunicipiosLoja
+                }
+                onChange={(evento) => setCidadeLoja(evento.target.value)}
+                autoComplete="address-level2"
+                className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-5 py-4 outline-none focus:border-green-400/50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">
+                  {!ufLoja
+                    ? "Escolha primeiro o estado"
+                    : carregandoMunicipiosLoja
+                      ? "Carregando cidades..."
+                      : "Selecione a cidade"}
+                </option>
+
+                {municipiosLoja.map((municipio) => (
+                  <option key={municipio.id} value={municipio.nome}>
+                    {municipio.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              disabled={
+                salvandoLocalizacaoLoja ||
+                carregandoMunicipiosLoja ||
+                !ufLoja ||
+                !cidadeLoja
+              }
+              onClick={salvarLocalizacaoLoja}
+              className="rounded-2xl bg-green-400 px-6 py-4 font-black text-black transition hover:bg-green-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {salvandoLocalizacaoLoja ? "Salvando..." : "Salvar localização"}
+            </button>
+          </div>
+
+          {erroMunicipiosLoja && (
+            <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">
+              <p>{erroMunicipiosLoja}</p>
+
+              <button
+                type="button"
+                disabled={
+                  salvandoLocalizacaoLoja ||
+                  !ufLoja ||
+                  carregandoMunicipiosLoja
+                }
+                onClick={() => carregarMunicipiosLoja(ufLoja)}
+                className="mt-3 font-black text-red-100 underline disabled:opacity-50"
+              >
+                Tentar carregar novamente
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="mt-8 rounded-3xl border border-blue-500/20 bg-blue-500/5 p-6">
