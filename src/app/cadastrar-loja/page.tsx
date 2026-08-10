@@ -308,7 +308,52 @@ export default function CadastrarLoja() {
   async function cadastrarLoja() {
     if (!validarFormulario() || salvando) return;
 
-    setSalvando(true);
+setSalvando(true);
+
+try {
+  const respostaModeracao = await fetch("/api/moderar-texto", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+  texto: `
+Nome da loja:
+${nome}
+
+Categoria:
+${categoria}
+
+Descrição:
+${descricao}
+`,
+}),
+  });
+
+  const dadosModeracao = await respostaModeracao.json();
+
+  if (
+    !dadosModeracao.sucesso ||
+    !dadosModeracao.resultado.permitido
+  ) {
+    alert(
+      dadosModeracao.resultado?.mensagem ??
+        "O conteúdo informado para a loja contém conteúdo não permitido."
+    );
+
+    setSalvando(false);
+    return;
+  }
+} catch (erro) {
+  console.error(erro);
+
+  alert(
+    "Não foi possível verificar o conteúdo da loja."
+  );
+
+  setSalvando(false);
+  return;
+}
 
     const {
       data: { user },
