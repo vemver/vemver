@@ -2,6 +2,7 @@ import "server-only"
 
 import { createClient } from "@supabase/supabase-js"
 import type { IntencaoBusca } from "./entenderIntencao"
+import { calcularDistanciaKm } from "./calcularDistancia"
 
 type LojaBusca = {
   id: number
@@ -17,16 +18,21 @@ type LojaBusca = {
   premium: boolean | null
   patrocinado: boolean | null
   score: number | null
+  distanciaKm: number | null
 }
 
 type BuscarLojasParams = {
   intencao: IntencaoBusca
   cidade?: string | null
   uf?: string | null
+  latitudeCliente?: number | null
+  longitudeCliente?: number | null
 }
 
 function criarClienteSupabaseServidor() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+
   const supabaseServiceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -58,8 +64,11 @@ export async function buscarLojas({
   intencao,
   cidade,
   uf,
+  latitudeCliente,
+  longitudeCliente,
 }: BuscarLojasParams): Promise<LojaBusca[]> {
-  const supabase = criarClienteSupabaseServidor()
+  const supabase =
+    criarClienteSupabaseServidor()
 
   let consulta = supabase
     .from("lojas")
@@ -97,35 +106,39 @@ export async function buscarLojas({
     )
   }
 
-  const termoBusca = intencao.termoBusca.trim()
-  const categoria = intencao.categoria?.trim()
+  const termoBusca =
+    intencao.termoBusca.trim()
 
-const filtrosTexto: string[] = []
+  const categoria =
+    intencao.categoria?.trim()
 
-if (termoBusca) {
-  filtrosTexto.push(
-    `nome.ilike.%${termoBusca}%`,
-    `categoria.ilike.%${termoBusca}%`,
-    `descricao.ilike.%${termoBusca}%`
-  )
-}
+  const filtrosTexto: string[] = []
 
-if (
-  categoria &&
-  categoria.toLowerCase() !== termoBusca.toLowerCase()
-) {
-  filtrosTexto.push(
-    `nome.ilike.%${categoria}%`,
-    `categoria.ilike.%${categoria}%`,
-    `descricao.ilike.%${categoria}%`
-  )
-}
+  if (termoBusca) {
+    filtrosTexto.push(
+      `nome.ilike.%${termoBusca}%`,
+      `categoria.ilike.%${termoBusca}%`,
+      `descricao.ilike.%${termoBusca}%`
+    )
+  }
 
-if (filtrosTexto.length > 0) {
-  consulta = consulta.or(
-    filtrosTexto.join(",")
-  )
-}
+  if (
+    categoria &&
+    categoria.toLowerCase() !==
+      termoBusca.toLowerCase()
+  ) {
+    filtrosTexto.push(
+      `nome.ilike.%${categoria}%`,
+      `categoria.ilike.%${categoria}%`,
+      `descricao.ilike.%${categoria}%`
+    )
+  }
+
+  if (filtrosTexto.length > 0) {
+    consulta = consulta.or(
+      filtrosTexto.join(",")
+    )
+  }
 
   consulta = consulta
     .order("patrocinado", {
@@ -155,5 +168,92 @@ if (filtrosTexto.length > 0) {
     )
   }
 
-  return (data ?? []) as LojaBusca[]
+  const lojasComDistancia = (
+    data ?? []
+  ).map((loja) => {
+    const possuiCoordenadasLoja =
+      typeof loja.latitude === "number" &&
+      typeof loja.longitude === "number"
+
+    const possuiCoordenadasCliente =
+      typeof latitudeCliente === "number" &&
+      typeof longitudeCliente === "number"
+
+    const distanciaKm =
+      possuiCoordenadasLoja &&
+      possuiCoordenadasCliente
+        ? calcularDistanciaKm(
+            latitudeCliente,
+            longitudeCliente,
+            loja.latitude,
+            loja.longitude
+          )
+        : null
+
+    return {
+      ...loja,
+      distanciaKm:
+        distanciaKm === null
+          ? null
+          : Number(
+              distanciaKm.toFixed(2)
+            ),
+    }
+  })
+
+  lojasComDistancia.sort((a, b) => {
+    if (
+      a.distanciaKm !== null &&
+      b.distanciaKm !== null
+    ) {
+      return (
+        a.distanciaKm -
+        b.distanciaKm
+      )
+    }
+
+    if (a.distanciaKm !== null) {
+      return -1
+    }
+
+    if (b.distanciaKm !== null) {
+      return 1
+    }
+
+    const patrocinadoA =
+      a.patrocinado ? 1 : 0
+
+    const patrocinadoB =
+      b.patrocinado ? 1 : 0
+
+    if (
+      patrocinadoA !==
+      patrocinadoB
+    ) {
+      return (
+        patrocinadoB -
+        patrocinadoA
+      )
+    }
+
+    const premiumA =
+      a.premium ? 1 : 0
+
+    const premiumB =
+      b.premium ? 1 : 0
+
+    if (
+      premiumA !==
+      premiumB
+    ) {
+      return premiumB - premiumA
+    }
+
+    return (
+      (b.score ?? 0) -
+      (a.score ?? 0)
+    )
+  })
+
+  return lojasComDistancia
 }

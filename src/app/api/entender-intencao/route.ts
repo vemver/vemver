@@ -8,6 +8,8 @@ type CorpoRequisicao = {
   mensagem?: unknown
   cidade?: unknown
   uf?: unknown
+  latitudeCliente?: unknown
+  longitudeCliente?: unknown
 }
 
 export async function POST(request: Request) {
@@ -50,17 +52,35 @@ export async function POST(request: Request) {
         ? corpo.uf.trim()
         : null
 
+    const latitudeCliente =
+      typeof corpo.latitudeCliente === "number"
+        ? corpo.latitudeCliente
+        : null
+
+    const longitudeCliente =
+      typeof corpo.longitudeCliente === "number"
+        ? corpo.longitudeCliente
+        : null
+
     const intencao = await entenderIntencao(mensagem)
 
     const lojas = await buscarLojas({
       intencao,
       cidade,
       uf,
+      latitudeCliente,
+      longitudeCliente,
     })
 
     return NextResponse.json({
       sucesso: true,
       mensagem,
+      localizacao: {
+        cidade,
+        uf,
+        latitudeCliente,
+        longitudeCliente,
+      },
       intencao,
       totalLojas: lojas.length,
       lojas,
