@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/verificar-planos",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/atualizar-scores",
+      "schedule": "0 4 * * *"
     }
   ]
 }
