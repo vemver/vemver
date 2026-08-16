@@ -18,8 +18,14 @@ type LojaBusca = {
   premium: boolean | null
   patrocinado: boolean | null
   score: number | null
+  relevanciaTexto: number
   distanciaKm: number | null
 }
+
+type LojaRpc = Omit<
+  LojaBusca,
+  "relevanciaTexto" | "distanciaKm"
+>
 
 type BuscarLojasParams = {
   intencao: IntencaoBusca
@@ -28,6 +34,32 @@ type BuscarLojasParams = {
   latitudeCliente?: number | null
   longitudeCliente?: number | null
 }
+
+const PALAVRAS_GENERICAS_BUSCA = new Set([
+  "loja",
+  "lojas",
+  "estabelecimento",
+  "estabelecimentos",
+  "comercio",
+  "local",
+  "locais",
+  "lugar",
+  "lugares",
+  "de",
+  "da",
+  "das",
+  "do",
+  "dos",
+  "em",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+])
 
 function criarClienteSupabaseServidor() {
   const supabaseUrl =
@@ -60,6 +92,149 @@ function criarClienteSupabaseServidor() {
   )
 }
 
+function normalizarTexto(
+  valor: string | null | undefined
+) {
+  return (valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+function limparPalavraBusca(
+  palavra: string
+) {
+  return palavra
+    .replace(/[.,;:!?()[\]{}"'%_]/g, "")
+    .trim()
+}
+
+function limparCriterioBusca(
+  valor: string | null | undefined
+) {
+  if (!valor?.trim()) {
+    return ""
+  }
+
+  const palavras = valor
+    .trim()
+    .split(/\s+/)
+    .map(limparPalavraBusca)
+    .filter(Boolean)
+
+  const palavrasSignificativas =
+    palavras.filter((palavra) => {
+      const palavraNormalizada =
+        normalizarTexto(palavra)
+
+      return (
+        palavraNormalizada.length >= 2 &&
+        !PALAVRAS_GENERICAS_BUSCA.has(
+          palavraNormalizada
+        )
+      )
+    })
+
+  return palavrasSignificativas.join(" ")
+}
+
+function obterCriteriosBusca(
+  intencao: IntencaoBusca
+) {
+  const candidatos = [
+    intencao.termoBusca,
+    intencao.categoria,
+  ]
+
+  const criterios = new Map<
+    string,
+    string
+  >()
+
+  for (const candidato of candidatos) {
+    const criterio =
+      limparCriterioBusca(candidato)
+
+    if (!criterio) {
+      continue
+    }
+
+    const criterioNormalizado =
+      normalizarTexto(criterio)
+
+    if (!criterioNormalizado) {
+      continue
+    }
+
+    criterios.set(
+      criterioNormalizado,
+      criterio
+    )
+  }
+
+  return Array.from(
+    criterios.values()
+  )
+}
+
+function calcularRelevanciaTexto(
+  loja: {
+    nome: string | null
+    categoria: string | null
+    descricao: string | null
+  },
+  criteriosBusca: string[]
+) {
+  const nomeLoja =
+    normalizarTexto(loja.nome)
+
+  const categoriaLoja =
+    normalizarTexto(loja.categoria)
+
+  const descricaoLoja =
+    normalizarTexto(loja.descricao)
+
+  const criterios =
+    criteriosBusca
+      .map(normalizarTexto)
+      .filter(Boolean)
+
+  let relevancia = 0
+
+  for (const criterio of criterios) {
+    if (nomeLoja === criterio) {
+      relevancia += 100
+    } else if (
+      nomeLoja.startsWith(criterio)
+    ) {
+      relevancia += 80
+    } else if (
+      nomeLoja.includes(criterio)
+    ) {
+      relevancia += 60
+    }
+
+    if (
+      categoriaLoja === criterio
+    ) {
+      relevancia += 90
+    } else if (
+      categoriaLoja.includes(criterio)
+    ) {
+      relevancia += 70
+    }
+
+    if (
+      descricaoLoja.includes(criterio)
+    ) {
+      relevancia += 25
+    }
+  }
+
+  return relevancia
+}
+
 export async function buscarLojas({
   intencao,
   cidade,
@@ -70,92 +245,40 @@ export async function buscarLojas({
   const supabase =
     criarClienteSupabaseServidor()
 
-  let consulta = supabase
-    .from("lojas")
-    .select(
-      `
-        id,
-        nome,
-        categoria,
-        cidade,
-        uf,
-        descricao,
-        imagem_url,
-        whatsapp,
-        latitude,
-        longitude,
-        premium,
-        patrocinado,
-        score
-      `
-    )
-    .eq("ativo", true)
-    .eq("status", "aprovada")
+  const criteriosBusca =
+    obterCriteriosBusca(intencao)
 
-  if (cidade?.trim()) {
-    consulta = consulta.ilike(
-      "cidade",
-      cidade.trim()
-    )
-  }
-
-  if (uf?.trim()) {
-    consulta = consulta.eq(
-      "uf",
-      uf.trim().toUpperCase()
-    )
-  }
-
-  const termoBusca =
-    intencao.termoBusca.trim()
-
-  const categoria =
-    intencao.categoria?.trim()
-
-  const filtrosTexto: string[] = []
-
-  if (termoBusca) {
-    filtrosTexto.push(
-      `nome.ilike.%${termoBusca}%`,
-      `categoria.ilike.%${termoBusca}%`,
-      `descricao.ilike.%${termoBusca}%`
-    )
-  }
-
-  if (
-    categoria &&
-    categoria.toLowerCase() !==
-      termoBusca.toLowerCase()
-  ) {
-    filtrosTexto.push(
-      `nome.ilike.%${categoria}%`,
-      `categoria.ilike.%${categoria}%`,
-      `descricao.ilike.%${categoria}%`
-    )
-  }
-
-  if (filtrosTexto.length > 0) {
-    consulta = consulta.or(
-      filtrosTexto.join(",")
-    )
-  }
-
-  consulta = consulta
-    .order("patrocinado", {
-      ascending: false,
-      nullsFirst: false,
-    })
-    .order("premium", {
-      ascending: false,
-      nullsFirst: false,
-    })
-    .order("score", {
-      ascending: false,
-      nullsFirst: false,
-    })
-    .limit(20)
-
-  const { data, error } = await consulta
+  const { data, error } =
+    await supabase
+      .rpc(
+        "buscar_lojas_sem_acentos",
+        {
+          p_criterios:
+            criteriosBusca,
+          p_cidade:
+            cidade?.trim() || null,
+          p_uf:
+            uf?.trim().toUpperCase() ||
+            null,
+        }
+      )
+      .select(
+        `
+          id,
+          nome,
+          categoria,
+          cidade,
+          uf,
+          descricao,
+          imagem_url,
+          whatsapp,
+          latitude,
+          longitude,
+          premium,
+          patrocinado,
+          score
+        `
+      )
 
   if (error) {
     console.error(
@@ -168,92 +291,151 @@ export async function buscarLojas({
     )
   }
 
-  const lojasComDistancia = (
-    data ?? []
-  ).map((loja) => {
-    const possuiCoordenadasLoja =
-      typeof loja.latitude === "number" &&
-      typeof loja.longitude === "number"
+  /*
+    A tipagem automática do Supabase pode interpretar
+    o retorno da RPC como objeto ou lista.
 
-    const possuiCoordenadasCliente =
-      typeof latitudeCliente === "number" &&
-      typeof longitudeCliente === "number"
+    Aqui garantimos para o TypeScript que trabalharemos
+    sempre com uma lista de lojas.
+  */
+  const lojasRpc = (
+    Array.isArray(data)
+      ? data
+      : data
+        ? [data]
+        : []
+  ) as LojaRpc[]
 
-    const distanciaKm =
-      possuiCoordenadasLoja &&
-      possuiCoordenadasCliente
-        ? calcularDistanciaKm(
-            latitudeCliente,
-            longitudeCliente,
-            loja.latitude,
-            loja.longitude
-          )
-        : null
+  const lojasComDistancia: LojaBusca[] =
+    lojasRpc.map((loja) => {
+      const latitudeLoja =
+        loja.latitude
 
-    return {
-      ...loja,
-      distanciaKm:
-        distanciaKm === null
-          ? null
-          : Number(
-              distanciaKm.toFixed(2)
-            ),
-    }
-  })
+      const longitudeLoja =
+        loja.longitude
 
-  lojasComDistancia.sort((a, b) => {
-    if (
-      a.distanciaKm !== null &&
-      b.distanciaKm !== null
-    ) {
-      return (
-        a.distanciaKm -
-        b.distanciaKm
+      const latitudeUsuario =
+        latitudeCliente
+
+      const longitudeUsuario =
+        longitudeCliente
+
+      const distanciaKm =
+        typeof latitudeLoja === "number" &&
+        typeof longitudeLoja === "number" &&
+        typeof latitudeUsuario === "number" &&
+        typeof longitudeUsuario === "number"
+          ? calcularDistanciaKm(
+              latitudeUsuario,
+              longitudeUsuario,
+              latitudeLoja,
+              longitudeLoja
+            )
+          : null
+
+      const relevanciaTexto =
+        calcularRelevanciaTexto(
+          loja,
+          criteriosBusca
+        )
+
+      return {
+        ...loja,
+        relevanciaTexto,
+        distanciaKm:
+          distanciaKm === null
+            ? null
+            : Number(
+                distanciaKm.toFixed(2)
+              ),
+      }
+    })
+
+  lojasComDistancia.sort(
+    (a: LojaBusca, b: LojaBusca) => {
+      /*
+        1. RELEVÂNCIA
+
+        Primeiro verificamos qual loja
+        corresponde melhor ao que o
+        cliente está procurando.
+      */
+      if (
+        a.relevanciaTexto !==
+        b.relevanciaTexto
+      ) {
+        return (
+          b.relevanciaTexto -
+          a.relevanciaTexto
+        )
+      }
+
+      /*
+        2. DISTÂNCIA
+
+        Só participa da ordenação quando
+        o cliente pediu algo perto dele.
+      */
+      if (
+        intencao.pertoDeMim === true
+      ) {
+        if (
+          a.distanciaKm !== null &&
+          b.distanciaKm !== null
+        ) {
+          if (
+            a.distanciaKm !==
+            b.distanciaKm
+          ) {
+            return (
+              a.distanciaKm -
+              b.distanciaKm
+            )
+          }
+        } else if (
+          a.distanciaKm !== null
+        ) {
+          return -1
+        } else if (
+          b.distanciaKm !== null
+        ) {
+          return 1
+        }
+      }
+
+      /*
+        3. SCORE
+
+        Premium e patrocinado já fazem
+        parte do score do banco.
+
+        Não somamos esses benefícios
+        novamente aqui.
+      */
+      if (
+        (a.score ?? 0) !==
+        (b.score ?? 0)
+      ) {
+        return (
+          (b.score ?? 0) -
+          (a.score ?? 0)
+        )
+      }
+
+      /*
+        4. DESEMPATE
+
+        Ordem alfabética.
+      */
+      return (a.nome ?? "").localeCompare(
+        b.nome ?? "",
+        "pt-BR"
       )
     }
+  )
 
-    if (a.distanciaKm !== null) {
-      return -1
-    }
-
-    if (b.distanciaKm !== null) {
-      return 1
-    }
-
-    const patrocinadoA =
-      a.patrocinado ? 1 : 0
-
-    const patrocinadoB =
-      b.patrocinado ? 1 : 0
-
-    if (
-      patrocinadoA !==
-      patrocinadoB
-    ) {
-      return (
-        patrocinadoB -
-        patrocinadoA
-      )
-    }
-
-    const premiumA =
-      a.premium ? 1 : 0
-
-    const premiumB =
-      b.premium ? 1 : 0
-
-    if (
-      premiumA !==
-      premiumB
-    ) {
-      return premiumB - premiumA
-    }
-
-    return (
-      (b.score ?? 0) -
-      (a.score ?? 0)
-    )
-  })
-
-  return lojasComDistancia
+  return lojasComDistancia.slice(
+    0,
+    20
+  )
 }
