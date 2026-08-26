@@ -1066,62 +1066,85 @@ antes de determinados vencimentos.
 
 # 65. Segurança do Cron de Planos
 
-No estado atual auditado, a rota:
-
-```text
-/api/cron/verificar-planos
-```
-
-não possui verificação explícita de `CRON_SECRET` dentro do próprio Route Handler.
-
-Isso representa uma pendência de segurança porque a rota executa operações privilegiadas no backend.
-
-A rota de atualização de scores já utiliza:
-
-```text
-CRON_SECRET
-```
-
-como proteção, porém essa mesma verificação ainda precisa ser aplicada ao cron de planos.
-
-### Estado
-
-```text
-CRON DE SCORE
-→ protegido por CRON_SECRET
-
-CRON DE PLANOS
-→ proteção explícita ainda pendente
-```
-
-### Exposição de detalhes internos
-
-A auditoria do Route Handler atual também confirmou que algumas respostas HTTP `500` retornam:
-
-```text
-detalhes: error.message
-```
-
-ou mensagens equivalentes originadas de erros internos.
-
-Esse comportamento deve ser endurecido para evitar exposição desnecessária de detalhes do backend ou do banco de dados.
-
-### Correções pendentes
-
 A rota:
 
 ```text
 /api/cron/verificar-planos
 ```
 
-deve receber:
+possui atualmente validação server-side de:
 
-- validação server-side de `CRON_SECRET` antes das operações privilegiadas;
-- respostas externas genéricas para erros `500`;
-- detalhes técnicos restritos aos logs server-side;
-- teste de chamada não autorizada confirmando rejeição da requisição.
+```text
+CRON_SECRET
+```
 
-Até essas correções serem implementadas, o endpoint não deve ser considerado devidamente protegido.
+O Route Handler recebe a requisição, lê o header:
+
+```text
+Authorization
+```
+
+e exige o formato:
+
+```text
+Bearer <CRON_SECRET>
+```
+
+antes de criar o cliente privilegiado do Supabase ou executar operações relacionadas aos planos.
+
+### Estado Atual
+
+```text
+CRON DE SCORE
+→ protegido por CRON_SECRET
+
+CRON DE PLANOS
+→ protegido por CRON_SECRET
+```
+
+### Comportamento Confirmado
+
+Chamada sem autorização válida:
+
+```text
+HTTP 401
+```
+
+Resposta:
+
+```json
+{
+  "sucesso": false,
+  "mensagem": "Não autorizado."
+}
+```
+
+Chamada com `CRON_SECRET` correto:
+
+```text
+HTTP 200
+```
+
+com execução normal da rotina de verificação de assinaturas.
+
+### Erros internos
+
+As respostas HTTP `500` do cron de planos não devolvem mais ao cliente campos derivados de:
+
+```text
+error.message
+```
+
+Os detalhes técnicos continuam sendo registrados através de logs server-side com `console.error`, enquanto a resposta externa permanece genérica.
+
+### Validação
+
+A correção foi validada localmente através de:
+
+- `npx tsc --noEmit`;
+- `npm run build`;
+- chamada sem autorização retornando `401`;
+- chamada autorizada retornando `200`.
 
 ---
 
@@ -2256,7 +2279,7 @@ A arquitetura atual de APIs já possui fundamentos importantes:
 - erros internos não expostos;
 - rate limit;
 - cron de score protegido por `CRON_SECRET`;
-- proteção explícita do cron de planos ainda pendente;
+- cron de planos protegido por CRON_SECRET e validado com 401/200;
 - RPCs privilegiadas;
 - secrets server-side;
 - separação entre IA e banco;

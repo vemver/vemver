@@ -864,7 +864,7 @@ O secret:
 CRON_SECRET
 ```
 
-é utilizado como mecanismo de autorização para rotas de cron que implementam explicitamente essa verificação.
+é utilizado como mecanismo de autorização server-side para as rotas de cron que executam operações internas ou privilegiadas.
 
 No estado atual auditado:
 
@@ -873,43 +873,62 @@ No estado atual auditado:
 → protegido por CRON_SECRET
 
 /api/cron/verificar-planos
-→ não possui verificação explícita de CRON_SECRET no Route Handler
+→ protegido por CRON_SECRET
 ```
 
-Portanto, a proteção do cron de planos permanece como uma pendência de segurança.
+No cron de planos, a validação ocorre antes da criação do cliente privilegiado do Supabase e antes da execução das operações relacionadas às assinaturas.
 
-Essa pendência é especialmente importante porque o endpoint de verificação de planos executa operações privilegiadas no backend.
-
-Além disso, a auditoria do Route Handler atual confirmou que algumas respostas HTTP `500` retornam o campo:
+O Route Handler exige:
 
 ```text
-detalhes
+Authorization: Bearer <CRON_SECRET>
 ```
 
-preenchido a partir de mensagens internas como:
+### Comportamento Confirmado
+
+Chamada sem autorização válida:
+
+```text
+HTTP 401
+```
+
+Chamada com `CRON_SECRET` correto:
+
+```text
+HTTP 200
+```
+
+A execução autorizada concluiu normalmente a rotina de verificação de assinaturas.
+
+### Proteção de Erros Internos
+
+A auditoria anterior identificou respostas HTTP `500` que retornavam detalhes derivados de:
 
 ```text
 error.message
 ```
 
-Isso pode expor ao cliente detalhes desnecessários sobre erros internos do backend ou do banco de dados.
+Esse comportamento foi corrigido.
 
-### Correções de segurança pendentes
+As respostas externas do cron de planos não devolvem mais esses detalhes internos.
 
-O endpoint:
+As informações técnicas necessárias para diagnóstico permanecem restritas aos logs server-side através de:
 
 ```text
-/api/cron/verificar-planos
+console.error
 ```
 
-deve receber:
+### Validações Realizadas
 
-- validação server-side de `CRON_SECRET` antes de qualquer operação privilegiada;
-- respostas externas genéricas para erros `500`;
-- detalhes técnicos apenas em logs server-side;
-- teste confirmando rejeição de chamadas não autorizadas.
+A correção foi validada com:
 
-Até que essas correções sejam implementadas, o cron de planos não deve ser considerado equivalente ao cron de score em termos de proteção.
+- `npx tsc --noEmit`;
+- `npm run build`;
+- chamada sem autorização retornando `401`;
+- chamada autorizada retornando `200`;
+- verificação de ausência do campo `detalhes` nas respostas implementadas pela rota.
+
+Os dois crons principais possuem agora proteção explícita por `CRON_SECRET`.
 
 ---
 
