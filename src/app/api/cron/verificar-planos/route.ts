@@ -698,8 +698,34 @@ async function processarMudancasAgendadas(supabaseAdmin: any, agora: Date) {
   return mudancasAtivadas;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const cronSecret = process.env.CRON_SECRET;
+
+    if (!cronSecret) {
+      console.error("CRON_SECRET não foi configurado.");
+
+      return NextResponse.json(
+        {
+          sucesso: false,
+          mensagem: "Configuração de segurança do cron ausente.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const authorization = request.headers.get("authorization");
+
+    if (authorization !== `Bearer ${cronSecret}`) {
+      return NextResponse.json(
+        {
+          sucesso: false,
+          mensagem: "Não autorizado.",
+        },
+        { status: 401 },
+      );
+    }
+
     if (!supabaseServiceKey) {
       return NextResponse.json(
         {
@@ -799,7 +825,6 @@ export async function GET() {
         {
           sucesso: false,
           erro: "Erro ao buscar assinaturas vencidas",
-          detalhes: buscaCortesiaError.message,
         },
         { status: 500 },
       );
@@ -834,7 +859,6 @@ export async function GET() {
           {
             sucesso: false,
             erro: "Erro ao ativar período de cortesia",
-            detalhes: ativarCortesiaError.message,
           },
           { status: 500 },
         );
@@ -905,7 +929,6 @@ export async function GET() {
         {
           sucesso: false,
           erro: "Erro ao buscar períodos de cortesia vencidos",
-          detalhes: buscaVencidasError.message,
         },
         { status: 500 },
       );
@@ -942,7 +965,6 @@ export async function GET() {
           {
             sucesso: false,
             erro: "Erro ao retornar lojas ao plano grátis",
-            detalhes: voltarGratisError.message,
           },
           { status: 500 },
         );
@@ -1057,7 +1079,6 @@ export async function GET() {
       {
         sucesso: false,
         erro: "Erro inesperado ao verificar planos",
-        detalhes: error?.message || "Erro desconhecido",
       },
       { status: 500 },
     );

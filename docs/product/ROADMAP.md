@@ -957,25 +957,41 @@ Auditar a experiência e as regras comerciais antes de escalar vendas.
 
 ### Segurança
 
-No estado atual auditado, o endpoint:
+O endpoint:
 
 ```text
 /api/cron/verificar-planos
 ```
 
-ainda **não possui verificação explícita de `CRON_SECRET` no próprio Route Handler**.
-
-Portanto, a proteção desse cron permanece como uma pendência de segurança.
-
-### Próxima correção técnica
-
-Adicionar validação server-side de:
+possui validação server-side de:
 
 ```text
 CRON_SECRET
 ```
 
+O Route Handler exige o header:
+
+```text
+Authorization: Bearer <CRON_SECRET>
+```
+
 antes da execução das operações privilegiadas do cron.
+
+### Comportamento confirmado
+
+Chamada sem autorização válida:
+
+```text
+HTTP 401
+```
+
+Chamada com `CRON_SECRET` correto:
+
+```text
+HTTP 200
+```
+
+Além disso, as respostas HTTP `500` não retornam mais detalhes internos derivados de `error.message`, mantendo essas informações apenas nos logs server-side.
 
 ### Evolução
 

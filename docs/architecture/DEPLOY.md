@@ -616,7 +616,7 @@ A variável:
 CRON_SECRET
 ```
 
-é utilizada como segredo server-side para autorização de rotas de cron que implementam explicitamente essa validação.
+é utilizada como segredo server-side para autorização das rotas de cron que executam operações internas ou privilegiadas.
 
 No estado atual auditado:
 
@@ -625,10 +625,22 @@ No estado atual auditado:
 → utiliza CRON_SECRET
 
 /api/cron/verificar-planos
-→ ainda não possui verificação explícita de CRON_SECRET no Route Handler
+→ utiliza CRON_SECRET
 ```
 
-Portanto, a presença da variável no ambiente não significa que todos os crons estejam automaticamente protegidos.
+Nas duas rotas, a validação ocorre no próprio Route Handler antes da execução das operações privilegiadas.
+
+No cron de planos, a proteção foi validada localmente com o seguinte comportamento:
+
+```text
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
+```
+
+A existência da variável no ambiente continua não sendo suficiente por si só: cada rota deve implementar explicitamente a validação server-side.
 
 ---
 
@@ -821,21 +833,31 @@ Verificar documentação e configuração antes de mudanças.
 
 # 53. Proteção dos Crons
 
-No estado atual, os dois crons possuem níveis diferentes de proteção explícita.
+No estado atual, os dois crons possuem proteção explícita por `CRON_SECRET`.
 
 ```text
 /api/cron/atualizar-scores
 → protegido por CRON_SECRET
 
 /api/cron/verificar-planos
-→ proteção explícita de CRON_SECRET ainda pendente
+→ protegido por CRON_SECRET
 ```
 
-A rota de score já valida o segredo antes de executar a operação privilegiada.
+Nas duas rotas, o segredo é validado antes da execução das operações privilegiadas.
 
-A rota de planos ainda precisa receber essa mesma camada de autorização no Route Handler.
+No cron de planos, a proteção foi confirmada localmente com:
 
-Essa diferença deve permanecer registrada até que o código seja corrigido.
+```text
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
+```
+
+Além disso, as respostas HTTP `500` do cron de planos não retornam mais detalhes internos derivados de `error.message`.
+
+Os detalhes técnicos permanecem restritos aos logs server-side.
 
 ---
 

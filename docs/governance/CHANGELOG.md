@@ -613,23 +613,51 @@ em:
 vercel.json
 ```
 
-### Segurança — Estado Auditado
+### Segurança — Estado Atual
 
-No Route Handler atual:
+O endpoint:
 
 ```text
 /api/cron/verificar-planos
 ```
 
-ainda não existe verificação explícita de:
+possui agora validação explícita de:
 
 ```text
 CRON_SECRET
 ```
 
-A rota executa operações privilegiadas utilizando o backend e, portanto, essa proteção permanece registrada como pendência de segurança.
+no próprio Route Handler.
 
-O cron de score já possui essa validação; o cron de planos ainda precisa recebê-la.
+A autorização é validada através do header:
+
+```text
+Authorization: Bearer <CRON_SECRET>
+```
+
+antes da criação do cliente privilegiado do Supabase e antes da execução das operações relacionadas às assinaturas.
+
+### Validação realizada
+
+O comportamento foi confirmado localmente:
+
+```text
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
+```
+
+Também foi removida das respostas HTTP `500` a exposição de detalhes internos derivados de:
+
+```text
+error.message
+```
+
+Os detalhes técnicos continuam disponíveis apenas nos logs server-side.
+
+Com essa alteração, os dois crons principais da plataforma utilizam proteção explícita por `CRON_SECRET`.
 
 ---
 

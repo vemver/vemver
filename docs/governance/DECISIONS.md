@@ -928,10 +928,18 @@ CRON_SECRET
 → protegido por CRON_SECRET
 
 /api/cron/verificar-planos
-→ ainda não possui verificação explícita de CRON_SECRET no Route Handler
+→ protegido por CRON_SECRET
 ```
 
-Portanto, a decisão arquitetural permanece válida, porém ainda não está completamente aplicada em todas as rotas de cron.
+A decisão arquitetural está atualmente aplicada nas duas rotas principais de cron.
+
+No endpoint:
+
+```text
+/api/cron/verificar-planos
+```
+
+a validação ocorre antes da criação do cliente privilegiado do Supabase e antes da execução das operações relacionadas às assinaturas.
 
 ## Motivo
 
@@ -945,21 +953,27 @@ não é mecanismo de segurança.
 
 Uma rota interna continua acessível por HTTP se não existir uma barreira real de autorização.
 
-## Pendência
-
-Adicionar validação explícita de:
+Por isso, as rotas exigem autorização server-side através de:
 
 ```text
-CRON_SECRET
+Authorization: Bearer <CRON_SECRET>
 ```
 
-ao endpoint:
+## Validação da Implementação
+
+O cron de planos foi validado localmente com:
 
 ```text
-/api/cron/verificar-planos
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
 ```
 
-antes de considerar esta decisão totalmente implementada.
+Também foi removida a exposição de detalhes internos derivados de `error.message` nas respostas HTTP `500`, mantendo essas informações apenas nos logs server-side.
+
+A pendência anteriormente registrada nesta decisão está concluída.
 
 ---
 

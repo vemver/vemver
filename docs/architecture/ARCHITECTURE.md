@@ -928,7 +928,9 @@ CRON_SECRET
 para impedir execução não autorizada.
 
 Essa proteção foi confirmada no Route Handler atual.
+
 ---
+
 # 63. Verificação de Planos
 
 Existe também:
@@ -939,9 +941,27 @@ GET /api/cron/verificar-planos
 
 Essa rota executa verificações periódicas relacionadas ao ciclo de assinaturas.
 
-No estado atual auditado, ela **não possui verificação explícita de `CRON_SECRET` dentro do próprio Route Handler**.
+No estado atual auditado, ela possui validação server-side de:
 
-Essa proteção permanece como pendência de segurança.
+```text
+CRON_SECRET
+```
+
+antes da criação do cliente privilegiado do Supabase e antes da execução das operações relacionadas aos planos.
+
+A chamada sem autorização válida retorna:
+
+```text
+HTTP 401
+```
+
+e a chamada com `CRON_SECRET` correto foi testada com retorno:
+
+```text
+HTTP 200
+```
+
+Além disso, detalhes internos derivados de `error.message` deixaram de ser retornados nas respostas HTTP `500`, permanecendo apenas nos logs server-side.
 
 ---
 
@@ -2583,7 +2603,7 @@ OPENAI
 
 # 208. Arquitetura de Cron
 
-No estado atual, os dois crons possuem níveis diferentes de proteção explícita.
+No estado atual, os dois crons utilizam proteção explícita por `CRON_SECRET` antes da execução das operações internas.
 
 ### Cron de Score
 
@@ -2606,24 +2626,26 @@ VERCEL CRON
      ↓
 /api/cron/verificar-planos
      ↓
+CRON_SECRET
+     ↓
 BACKEND
      ↓
 SUPABASE
 ```
 
-Atualmente, o Route Handler de:
+No cron de planos, a validação ocorre antes da criação do cliente privilegiado do Supabase.
+
+O comportamento atual foi confirmado localmente:
 
 ```text
-/api/cron/verificar-planos
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
 ```
 
-não possui verificação explícita de:
-
-```text
-CRON_SECRET
-```
-
-Essa proteção permanece como pendência de segurança.
+As respostas HTTP `500` também deixaram de retornar detalhes internos derivados de `error.message`, mantendo essas informações apenas nos logs server-side.
 
 ---
 

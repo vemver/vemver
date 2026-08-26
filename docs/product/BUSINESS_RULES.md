@@ -1554,10 +1554,24 @@ No estado atual auditado:
 → protegido por CRON_SECRET
 
 /api/cron/verificar-planos
-→ ainda não possui verificação explícita de CRON_SECRET no Route Handler
+→ protegido por CRON_SECRET
 ```
 
-Portanto, a proteção do cron de planos permanece como uma pendência de segurança.
+Nas duas rotas, a validação ocorre antes da execução das operações privilegiadas.
+
+No cron de planos, a proteção foi confirmada com:
+
+```text
+SEM AUTORIZAÇÃO
+→ HTTP 401
+
+COM CRON_SECRET CORRETO
+→ HTTP 200
+```
+
+Também foi removida das respostas HTTP `500` a exposição de detalhes internos derivados de `error.message`.
+
+Esses detalhes permanecem apenas nos logs server-side.
 
 A regra de negócio continua sendo:
 
