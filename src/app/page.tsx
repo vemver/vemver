@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
-
+import type { ResultadoLojaBusca } from "./lib/ia/tiposBusca";
 const categorias = [
   "Restaurantes",
   "Mercados",
@@ -25,6 +25,15 @@ type LocalizacaoManualSalva = {
   modo: "manual";
   cidade: string;
   uf: string;
+};
+
+type IntencaoBuscaHome = {
+  termoBusca: string;
+  categoria: string | null;
+  delivery: boolean | null;
+  abertoAgora: boolean | null;
+  pertoDeMim: boolean | null;
+  preco: "baixo" | "medio" | "alto" | null;
 };
 
 const CHAVE_LOCALIZACAO = "vemver_localizacao_preferida";
@@ -63,6 +72,19 @@ export default function Home() {
   const [lojas, setLojas] = useState<any[]>([]);
   const [produtos, setProdutos] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
+  const [resultadosInteligentes, setResultadosInteligentes] = useState<
+    ResultadoLojaBusca[]
+  >([]);
+  const [intencaoInterpretada, setIntencaoInterpretada] =
+    useState<IntencaoBuscaHome | null>(null);
+  const [carregandoBusca, setCarregandoBusca] = useState(false);
+  const [erroBusca, setErroBusca] = useState("");
+
+  const buscaInteligenteAtiva =
+    carregandoBusca ||
+    Boolean(erroBusca) ||
+    intencaoInterpretada !== null ||
+    resultadosInteligentes.length > 0;
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [localizacaoStatus, setLocalizacaoStatus] = useState(
@@ -282,6 +304,96 @@ export default function Home() {
     setProdutos(produtosData || []);
   }
 
+  async function realizarBuscaInteligente(mensagemForcada?: string) {
+  const mensagem = (mensagemForcada ?? busca).trim();
+
+  if (mensagemForcada !== undefined) {
+    setBusca(mensagemForcada);
+  }
+
+    if (!mensagem) {
+      setResultadosInteligentes([]);
+      setIntencaoInterpretada(null);
+      setErroBusca("");
+      return;
+    }
+
+    setCarregandoBusca(true);
+    setResultadosInteligentes([]);
+    setIntencaoInterpretada(null);
+    setErroBusca("");
+
+    try {
+      const corpo = {
+        mensagem,
+        cidade: cidadeSelecionada.trim() || null,
+        uf: ufSelecionada.trim().toUpperCase() || null,
+        latitudeCliente:
+          typeof latitude === "number"
+            ? latitude
+            : null,
+        longitudeCliente:
+          typeof longitude === "number"
+            ? longitude
+            : null,
+      };
+
+      const resposta = await fetch(
+        "/api/entender-intencao",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(corpo),
+        },
+      );
+
+      const dados = (await resposta.json()) as {
+        sucesso?: boolean;
+        mensagem?: string;
+        intencao?: IntencaoBuscaHome;
+        resultados?: ResultadoLojaBusca[];
+      };
+
+      if (
+        !resposta.ok ||
+        dados.sucesso !== true
+      ) {
+        throw new Error(
+          dados.mensagem ||
+            "Não foi possível realizar a busca.",
+        );
+      }
+
+      setResultadosInteligentes(
+        Array.isArray(dados.resultados)
+          ? dados.resultados
+          : [],
+      );
+
+      setIntencaoInterpretada(
+        dados.intencao ?? null,
+      );
+    } catch (error) {
+      console.error(
+        "Erro na busca inteligente:",
+        error,
+      );
+
+      setResultadosInteligentes([]);
+      setIntencaoInterpretada(null);
+
+      setErroBusca(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível realizar a busca.",
+      );
+    } finally {
+      setCarregandoBusca(false);
+    }
+  }
+
   function normalizar(texto: string) {
     return texto
       .toLowerCase()
@@ -290,7 +402,14 @@ export default function Home() {
   }
 
   function criarSlugLoja(loja: any) {
-    return `/loja/${loja.id}-${loja.nome.toLowerCase().replaceAll(" ", "-")}`;
+    const nome = String(loja.nome || "loja")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    return `/loja/${loja.id}-${nome}`;
   }
   function criarSlugProduto(produto: any) {
     const nome = String(produto.nome || "")
@@ -347,20 +466,7 @@ export default function Home() {
   const lojasDaRegiao = lojas.filter(lojaPertenceARegiao);
 
   const lojasFiltradas = lojasDaRegiao
-    .filter((loja) => {
-      if (loja.ativo === false) return false;
-
-      const buscaNormalizada = normalizar(busca);
-
-      if (!buscaNormalizada) return true;
-
-      return (
-        normalizar(loja.nome || "").includes(buscaNormalizada) ||
-        normalizar(loja.categoria || "").includes(buscaNormalizada) ||
-        normalizar(loja.cidade || "").includes(buscaNormalizada) ||
-        normalizar(loja.descricao || "").includes(buscaNormalizada)
-      );
-    })
+    .filter((loja) => loja.ativo !== false)
     .sort((a, b) => {
       const scoreA = Number(a.score || 0);
       const scoreB = Number(b.score || 0);
@@ -469,25 +575,7 @@ export default function Home() {
       return Number(b.id) - Number(a.id);
     })
     .slice(0, 12);
-  const produtosFiltrados = produtos.filter((produto) => {
-    const buscaNormalizada = normalizar(busca);
 
-    if (!buscaNormalizada) return false;
-
-    const lojaDoProduto = lojasDaRegiao.find(
-      (loja) => Number(loja.id) === Number(produto.loja_id),
-    );
-
-    if (!lojaDoProduto || lojaDoProduto.ativo === false) return false;
-
-    return (
-      normalizar(produto.nome || "").includes(buscaNormalizada) ||
-      normalizar(produto.descricao || "").includes(buscaNormalizada) ||
-      normalizar(lojaDoProduto?.nome || "").includes(buscaNormalizada) ||
-      normalizar(lojaDoProduto?.categoria || "").includes(buscaNormalizada) ||
-      normalizar(lojaDoProduto?.cidade || "").includes(buscaNormalizada)
-    );
-  });
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -607,18 +695,44 @@ export default function Home() {
 
         <div className="flex flex-col gap-4 md:flex-row">
           <input
-            className="flex-1 rounded-2xl border border-white/10 bg-black px-6 py-4 outline-none"
+            className="flex-1 rounded-2xl border border-white/10 bg-black px-6 py-4 outline-none disabled:cursor-wait disabled:opacity-60"
             value={busca}
-            onChange={(e) => setBusca(e.target.value)}
+            onChange={(event) => {
+              setBusca(event.target.value);
+
+              if (buscaInteligenteAtiva) {
+                setResultadosInteligentes([]);
+                setIntencaoInterpretada(null);
+                setErroBusca("");
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void realizarBuscaInteligente();
+              }
+            }}
+            disabled={carregandoBusca}
             placeholder="Buscar iPhone, coxinha, açaí, assistência..."
           />
 
-          <button className="rounded-2xl bg-green-400 px-8 py-4 font-bold text-black">
-            Buscar
+          <button
+            type="button"
+            onClick={() => void realizarBuscaInteligente()}
+            disabled={carregandoBusca || !busca.trim()}
+            className="rounded-2xl bg-green-400 px-8 py-4 font-bold text-black disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {carregandoBusca ? "Buscando..." : "Buscar"}
           </button>
 
           <button
-            onClick={() => setBusca("")}
+            type="button"
+            onClick={() => {
+              setBusca("");
+              setResultadosInteligentes([]);
+              setIntencaoInterpretada(null);
+              setErroBusca("");
+            }}
             className="rounded-2xl border border-white/20 px-8 py-4 font-bold text-white"
           >
             Limpar
@@ -626,7 +740,9 @@ export default function Home() {
         </div>
       </section>
 
-      {cidadeSelecionada && lojasFiltradas.length === 0 && !busca && (
+      {cidadeSelecionada &&
+        lojasFiltradas.length === 0 &&
+        !buscaInteligenteAtiva && (
         <section className="mx-auto mt-10 max-w-4xl px-6">
           <div className="rounded-[2rem] border border-green-400/20 bg-green-400/5 p-8 text-center">
             <span className="text-4xl">📍</span>
@@ -652,7 +768,7 @@ export default function Home() {
         </section>
       )}
 
-      {!busca && lojasPatrocinadas.length > 0 && (
+      {!buscaInteligenteAtiva && lojasPatrocinadas.length > 0 && (
         <section className="mx-auto max-w-7xl px-6 pt-16">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -737,7 +853,7 @@ export default function Home() {
         </section>
       )}
 
-      {!busca && lojasPremium.length > 0 && (
+      {!buscaInteligenteAtiva && lojasPremium.length > 0 && (
         <section className="mx-auto max-w-7xl px-6 pt-14">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -804,125 +920,238 @@ export default function Home() {
           </div>
         </section>
       )}
-      {busca && produtosFiltrados.length > 0 && (
-        <section className="mx-auto max-w-7xl px-6 pt-14">
-          <div className="mb-8 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-3xl font-black">
-                Produtos e serviços encontrados
-              </h2>
 
-              <p className="mt-2 text-zinc-400">
-                Itens encontrados nas lojas cadastradas no VemVer.
-              </p>
-            </div>
+      {erroBusca && (
+        <section className="mx-auto max-w-4xl px-6 pt-10">
+          <div className="rounded-3xl border border-red-400/25 bg-red-400/10 p-6 text-red-200">
+            <p className="font-bold">
+              Não foi possível concluir a busca.
+            </p>
 
-            <span className="rounded-full bg-green-400/15 px-4 py-2 text-sm text-green-300">
-              {produtosFiltrados.length} itens
-            </span>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {produtosFiltrados.map((produto) => {
-              const lojaDoProduto = lojasDaRegiao.find(
-                (loja) => Number(loja.id) === Number(produto.loja_id),
-              );
-
-              if (!lojaDoProduto || lojaDoProduto.ativo === false) return null;
-
-              return (
-                <div
-                  key={produto.id}
-                  className="rounded-3xl border border-green-400/20 bg-zinc-900 p-6 transition hover:scale-[1.02] hover:border-green-400/50"
-                >
-                  {produto.imagem_url && (
-                    <img
-                      src={produto.imagem_url}
-                      alt={produto.nome}
-                      className="h-52 w-full rounded-2xl object-cover"
-                    />
-                  )}
-
-                  <h3 className="mt-5 text-2xl font-black">{produto.nome}</h3>
-
-                  {produto.promocao &&
-                  produto.preco_promocional &&
-                  Number(produto.preco_promocional) > 0 ? (
-                    <>
-                      <span className="inline-block rounded-full bg-red-500 px-2 py-1 text-xs font-black text-white">
-                        🔥 PROMOÇÃO
-                      </span>
-
-                      <p className="mt-2 text-sm text-zinc-500 line-through">
-                        R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
-                      </p>
-
-                      <p className="text-2xl font-black text-green-300">
-                        R${" "}
-                        {Number(produto.preco_promocional)
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </p>
-
-                      <p className="text-sm font-bold text-green-400">
-                        Economize R${" "}
-                        {(
-                          Number(produto.preco) -
-                          Number(produto.preco_promocional)
-                        )
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </p>
-                    </>
-                  ) : (
-                    produto.preco && (
-                      <p className="mt-2 text-2xl font-black text-green-300">
-                        R$ {Number(produto.preco).toFixed(2).replace(".", ",")}
-                      </p>
-                    )
-                  )}
-
-                  {produto.descricao && (
-                    <p className="mt-2 text-zinc-400">{produto.descricao}</p>
-                  )}
-
-                  <p className="mt-4 text-sm text-zinc-500">Vendido por:</p>
-
-                  <p className="text-lg font-black">{lojaDoProduto.nome}</p>
-
-                  <p className="mt-1 text-zinc-500">
-                    📍 {lojaDoProduto.cidade}
-                  </p>
-
-                  <div className="mt-5 flex flex-col gap-3">
-                    <button
-                      onClick={() =>
-                        (window.location.href = criarSlugLoja(lojaDoProduto))
-                      }
-                      className="rounded-2xl border border-white/10 px-5 py-4 font-bold"
-                    >
-                      Ver loja
-                    </button>
-
-                    {lojaDoProduto.whatsapp && (
-                      <a
-                        href={`https://wa.me/55${lojaDoProduto.whatsapp}?text=${encodeURIComponent(
-                          `Olá! Vi no VemVer e tenho interesse em: ${produto.nome}`,
-                        )}`}
-                        target="_blank"
-                        className="rounded-2xl bg-green-400 px-5 py-4 text-center font-black text-black"
-                      >
-                        Tenho interesse
-                      </a>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <p className="mt-2 text-sm text-red-200/80">
+              {erroBusca}
+            </p>
           </div>
         </section>
       )}
-      {produtosHome.length > 0 && !busca && (
+
+      {!carregandoBusca &&
+        intencaoInterpretada &&
+        !erroBusca &&
+        resultadosInteligentes.length === 0 && (
+          <section className="mx-auto max-w-4xl px-6 pt-10">
+            <div className="rounded-3xl border border-white/10 bg-zinc-900 p-8 text-center">
+              <span className="text-4xl">🔎</span>
+
+              <h2 className="mt-4 text-2xl font-black">
+                Nenhum resultado encontrado
+              </h2>
+
+              <p className="mt-3 text-zinc-400">
+                Não encontramos lojas ou produtos relacionados a{" "}
+                <strong className="text-white">
+                  {intencaoInterpretada.termoBusca}
+                </strong>
+                .
+              </p>
+
+              <p className="mt-2 text-sm text-zinc-500">
+                Tente pesquisar de outra forma ou escolha outra região.
+              </p>
+            </div>
+          </section>
+        )}
+
+      {resultadosInteligentes.length > 0 && (
+        <section className="mx-auto max-w-7xl px-6 pt-14">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <span className="inline-block rounded-full bg-green-400/15 px-4 py-2 text-sm font-black text-green-300">
+                BUSCA INTELIGENTE
+              </span>
+
+              <h2 className="mt-4 text-3xl font-black">
+                Encontramos o que você procura
+              </h2>
+
+              {intencaoInterpretada && (
+                <p className="mt-2 text-zinc-400">
+                  Resultados para{" "}
+                  <strong className="text-white">
+                    {intencaoInterpretada.termoBusca}
+                  </strong>
+                </p>
+              )}
+            </div>
+
+            <span className="rounded-full bg-green-400/15 px-4 py-2 text-sm font-bold text-green-300">
+              {resultadosInteligentes.length}{" "}
+              {resultadosInteligentes.length === 1
+                ? "resultado"
+                : "resultados"}
+            </span>
+          </div>
+
+          <div className="space-y-6">
+            {resultadosInteligentes.map((resultado) => (
+              <article
+                key={`resultado-inteligente-${resultado.id}`}
+                className="overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-900"
+              >
+                <div className="grid gap-0 lg:grid-cols-[320px_1fr]">
+                  <div>
+                    {resultado.imagem_url ? (
+                      <img
+                        src={resultado.imagem_url}
+                        alt={resultado.nome || "Loja"}
+                        className="h-full min-h-64 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full min-h-64 items-center justify-center bg-zinc-800 text-zinc-500">
+                        Loja sem imagem
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-6 md:p-8">
+                    <div className="flex flex-wrap gap-2">
+                      {resultado.patrocinado && (
+                        <span className="rounded-full bg-blue-500 px-3 py-1 text-xs font-black text-white">
+                          🚀 PATROCINADO
+                        </span>
+                      )}
+
+                      {!resultado.patrocinado &&
+                        resultado.premium && (
+                          <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-black text-black">
+                            ⭐ PREMIUM
+                          </span>
+                        )}
+
+                      {resultado.distanciaKm !== null && (
+                        <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-bold text-zinc-300">
+                          📍 {resultado.distanciaKm.toFixed(1)} km
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="mt-4 text-3xl font-black">
+                      {resultado.nome}
+                    </h3>
+
+                    <p className="mt-2 text-zinc-400">
+                      {resultado.categoria}
+                    </p>
+
+                    <p className="mt-1 text-zinc-500">
+                      📍 {resultado.cidade}
+                      {resultado.uf ? ` - ${resultado.uf}` : ""}
+                    </p>
+
+                    {resultado.descricao && (
+                      <p className="mt-4 text-zinc-300">
+                        {resultado.descricao}
+                      </p>
+                    )}
+
+                    {resultado.produtosEncontrados.length > 0 && (
+                      <div className="mt-7">
+                        <p className="mb-4 text-sm font-black uppercase tracking-wide text-green-300">
+                          Encontrado nesta loja
+                        </p>
+
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {resultado.produtosEncontrados.map(
+                            (produto) => (
+                              <div
+                                key={`resultado-produto-${produto.id}`}
+                                className="overflow-hidden rounded-2xl border border-green-400/15 bg-black/30"
+                              >
+                                {produto.imagem_url && (
+                                  <img
+                                    src={produto.imagem_url}
+                                    alt={produto.nome || "Produto"}
+                                    className="h-36 w-full object-cover"
+                                  />
+                                )}
+
+                                <div className="p-4">
+                                  <h4 className="font-black">
+                                    {produto.nome}
+                                  </h4>
+
+                                  {produto.promocao &&
+                                  produto.preco_promocional !== null &&
+                                  Number(produto.preco_promocional) > 0 ? (
+                                    <div className="mt-2">
+                                      {produto.preco !== null && (
+                                        <p className="text-xs text-zinc-500 line-through">
+                                          R${" "}
+                                          {Number(produto.preco)
+                                            .toFixed(2)
+                                            .replace(".", ",")}
+                                        </p>
+                                      )}
+
+                                      <p className="text-lg font-black text-green-300">
+                                        R${" "}
+                                        {Number(
+                                          produto.preco_promocional,
+                                        )
+                                          .toFixed(2)
+                                          .replace(".", ",")}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    produto.preco !== null && (
+                                      <p className="mt-2 text-lg font-black text-green-300">
+                                        R${" "}
+                                        {Number(produto.preco)
+                                          .toFixed(2)
+                                          .replace(".", ",")}
+                                      </p>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-7 flex flex-wrap gap-3">
+                      <button
+                        onClick={() =>
+                          (window.location.href =
+                            criarSlugLoja(resultado))
+                        }
+                        className="rounded-2xl border border-white/15 px-6 py-4 font-black"
+                      >
+                        Ver loja
+                      </button>
+
+                      {resultado.whatsapp && (
+                        <a
+                          href={`https://wa.me/55${resultado.whatsapp}?text=${encodeURIComponent(
+                            `Olá! Encontrei sua loja pelo VemVer pesquisando por ${intencaoInterpretada?.termoBusca || busca}.`,
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-2xl bg-green-400 px-6 py-4 font-black text-black"
+                        >
+                          Tenho interesse
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {produtosHome.length > 0 && !buscaInteligenteAtiva && (
         <section className="mx-auto max-w-7xl px-6 py-16">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -1087,7 +1316,7 @@ export default function Home() {
           </div>
         </section>
       )}
-      {produtosDestaque.length > 0 && (
+      {!buscaInteligenteAtiva && produtosDestaque.length > 0 && (
         <section className="mx-auto max-w-7xl px-6 pb-16">
           <div className="mb-8">
             <h2 className="text-4xl font-black text-yellow-400">
@@ -1199,23 +1428,26 @@ export default function Home() {
           </div>
         </section>
       )}
-      <section className="mx-auto max-w-7xl px-6 py-20">
-        <h2 className="mb-8 text-3xl font-black">Categorias populares</h2>
+      {!buscaInteligenteAtiva && (
+        <section className="mx-auto max-w-7xl px-6 py-20">
+          <h2 className="mb-8 text-3xl font-black">Categorias populares</h2>
 
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-          {categorias.map((item) => (
-            <button
-              key={item}
-              onClick={() => setBusca(item)}
-              className="rounded-3xl border border-white/10 bg-zinc-900 p-7 text-center transition hover:scale-[1.02] hover:border-green-400/40"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 pb-20">
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
+            {categorias.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => void realizarBuscaInteligente(item)}
+                className="rounded-3xl border border-white/10 bg-zinc-900 p-7 text-center transition hover:scale-[1.02] hover:border-green-400/40"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {!buscaInteligenteAtiva && (
+        <section className="mx-auto max-w-7xl px-6 pb-20">
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-3xl font-black">
@@ -1295,18 +1527,21 @@ export default function Home() {
             );
           })}
         </div>
-      </section>
+        </section>
+      )}
 
-      <section className="mx-auto max-w-7xl px-6 pb-24">
-        <div className="rounded-[2rem] border border-green-400/30 bg-green-400/10 p-8 md:p-12">
-          <h2 className="text-4xl font-black">Plano lojista premium</h2>
+      {!buscaInteligenteAtiva && (
+        <section className="mx-auto max-w-7xl px-6 pb-24">
+          <div className="rounded-[2rem] border border-green-400/30 bg-green-400/10 p-8 md:p-12">
+            <h2 className="text-4xl font-black">Plano lojista premium</h2>
 
-          <p className="mt-4 max-w-2xl text-zinc-300">
-            Entre grátis, teste o VemVer e depois destaque sua loja para
-            aparecer mais, vender mais e sair na frente da concorrência.
-          </p>
-        </div>
-      </section>
+            <p className="mt-4 max-w-2xl text-zinc-300">
+              Entre grátis, teste o VemVer e depois destaque sua loja para
+              aparecer mais, vender mais e sair na frente da concorrência.
+            </p>
+          </div>
+        </section>
+      )}
 
       {seletorLocalizacaoAberto && (
         <div
