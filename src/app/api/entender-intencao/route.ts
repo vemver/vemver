@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { entenderIntencao } from "../../lib/ia/entenderIntencao"
-import { buscarLojas } from "../../lib/ia/buscarLojas"
+import { buscarResultados } from "../../lib/ia/buscarResultados"
 
 export const runtime = "nodejs"
 
@@ -314,14 +314,14 @@ export async function POST(request: Request) {
         mensagem
       )
 
-    const lojas =
-      await buscarLojas({
-        intencao,
-        cidade,
-        uf,
-        latitudeCliente,
-        longitudeCliente,
-      })
+    const resultados =
+  await buscarResultados({
+    intencao,
+    cidade,
+    uf,
+    latitudeCliente,
+    longitudeCliente,
+  })
 
     return NextResponse.json({
       sucesso: true,
@@ -333,8 +333,8 @@ export async function POST(request: Request) {
         longitudeCliente,
       },
       intencao,
-      totalLojas: lojas.length,
-      lojas,
+      totalResultados: resultados.length,
+resultados,
     })
   } catch (erro) {
     /*
