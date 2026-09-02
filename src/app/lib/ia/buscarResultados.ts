@@ -12,9 +12,16 @@ import {
 import { criarClienteSupabaseServidor } from "./clienteSupabaseServidor"
 import { calcularDistanciaKm } from "./calcularDistancia"
 import {
-  normalizarTexto,
   obterTermosContextoBusca,
 } from "./criteriosBusca"
+import {
+  candidatoAtendeContexto,
+} from "./regrasContextoBusca"
+import {
+  compararResultadosBusca,
+  obterMaiorRelevanciaProdutos,
+  obterRelevanciaTotal,
+} from "./regrasRankingBusca"
 import type {
   ProdutoEncontradoBusca,
   ResultadoLojaBusca,
@@ -90,226 +97,6 @@ function calcularDistanciaLoja(
 
   return Number(
     distancia.toFixed(2)
-  )
-}
-
-/*
-  Verifica se algum dos textos do candidato
-  possui pelo menos um dos termos que
-  representam o contexto essencial da busca.
-
-  Todos os valores são normalizados para que
-  diferenças de maiúsculas e acentuação não
-  prejudiquem a comparação.
-*/
-function textoContemContexto(
-  valores: Array<
-    string | null | undefined
-  >,
-  termosContexto: string[]
-) {
-  const textosNormalizados =
-    valores
-      .map(normalizarTexto)
-      .filter(Boolean)
-
-  const contextosNormalizados =
-    termosContexto
-      .map(normalizarTexto)
-      .filter(Boolean)
-
-  return contextosNormalizados.some(
-    (contexto) =>
-      textosNormalizados.some(
-        (texto) =>
-          texto.includes(contexto)
-      )
-  )
-}
-
-/*
-  A recuperação inicial pode ser mais ampla.
-
-  Esta função funciona como uma barreira
-  posterior para impedir falsos positivos
-  quando existe um domínio essencial na
-  intenção do usuário.
-
-  Exemplo:
-
-  "assistência notebook"
-
-  VG TECH:
-  "reparos eletrônicos"
-
-  Existe contexto compatível:
-  "eletrônicos"
-
-  Resultado válido.
-
-
-  "assistência geladeira"
-
-  VG TECH:
-  "reparos eletrônicos"
-
-  Não existe:
-  geladeira
-  refrigerador
-  eletrodomésticos
-  refrigeração
-
-  Resultado descartado.
-*/
-function candidatoAtendeContexto(
-  loja: LojaBusca,
-  produtos: ProdutoBusca[],
-  termosContexto: string[]
-) {
-  /*
-    Quando a busca não possui domínio
-    específico obrigatório, não devemos
-    bloquear candidatos.
-
-    Exemplo:
-    "loja"
-  */
-  if (termosContexto.length === 0) {
-    return true
-  }
-
-  /*
-    Primeiro analisamos os dados da
-    própria loja.
-  */
-  const contextoNaLoja =
-    textoContemContexto(
-      [
-        loja.nome,
-        loja.categoria,
-        loja.descricao,
-      ],
-      termosContexto
-    )
-
-  if (contextoNaLoja) {
-    return true
-  }
-
-  /*
-    Mesmo que o contexto não esteja na
-    descrição da loja, um produto da loja
-    pode tornar o estabelecimento válido.
-
-    Exemplo:
-
-    busca:
-    "iphone"
-
-    loja:
-    categoria MODA
-
-    produto:
-    IPHONE 15 PRO
-    marca APPLE
-
-    O produto valida o contexto.
-  */
-  return produtos.some(
-    (produto) =>
-      textoContemContexto(
-        [
-          produto.nome,
-          produto.descricao,
-          produto.categoria,
-          produto.marca,
-        ],
-        termosContexto
-      )
-  )
-}
-
-function compararResultados(
-  a: ResultadoLojaBusca,
-  b: ResultadoLojaBusca,
-  intencao: IntencaoBusca
-) {
-  /*
-    1. RELEVÂNCIA
-
-    A relevância continua sendo o fator
-    principal do VemVer.
-
-    Uma loja patrocinada irrelevante
-    nunca deve superar uma loja que
-    corresponde melhor à intenção.
-  */
-  if (
-    a.relevanciaTotal !==
-    b.relevanciaTotal
-  ) {
-    return (
-      b.relevanciaTotal -
-      a.relevanciaTotal
-    )
-  }
-
-  /*
-    2. DISTÂNCIA
-
-    Só influencia a ordem quando o
-    usuário realmente pediu algo perto.
-  */
-  if (
-    intencao.pertoDeMim === true
-  ) {
-    if (
-      a.distanciaKm !== null &&
-      b.distanciaKm !== null
-    ) {
-      if (
-        a.distanciaKm !==
-        b.distanciaKm
-      ) {
-        return (
-          a.distanciaKm -
-          b.distanciaKm
-        )
-      }
-    } else if (
-      a.distanciaKm !== null
-    ) {
-      return -1
-    } else if (
-      b.distanciaKm !== null
-    ) {
-      return 1
-    }
-  }
-
-  /*
-    3. SCORE
-
-    Benefícios comerciais, qualidade
-    e sinais de engajamento entram
-    depois da relevância e da distância.
-  */
-  if (
-    (a.score ?? 0) !==
-    (b.score ?? 0)
-  ) {
-    return (
-      (b.score ?? 0) -
-      (a.score ?? 0)
-    )
-  }
-
-  /*
-    4. DESEMPATE
-  */
-  return (a.nome ?? "").localeCompare(
-    b.nome ?? "",
-    "pt-BR"
   )
 }
 
@@ -527,7 +314,9 @@ export async function buscarResultados({
 
     /*
       Ordenamos os produtos encontrados
-      pela relevância textual.
+      pela relevância textual apenas para
+      definir quais serão apresentados
+      ao usuário.
     */
     const produtosOrdenados =
       [...produtosDaLoja].sort(
@@ -537,34 +326,31 @@ export async function buscarResultados({
       )
 
     /*
-      Consideramos somente a melhor
-      relevância de produto.
+      A relevância de produtos considera
+      somente o produto mais relevante.
 
-      Dessa forma uma loja não consegue
-      ganhar relevância artificialmente
-      simplesmente cadastrando muitos
-      produtos medianamente relacionados.
+      Não somamos relevância entre vários
+      produtos para impedir que uma loja
+      suba artificialmente no ranking por
+      quantidade de cadastros.
     */
     const relevanciaProdutos =
-      produtosOrdenados.length > 0
-        ? Math.max(
-            ...produtosOrdenados.map(
-              (produto) =>
-                produto.relevanciaTexto
-            )
-          )
-        : 0
+      obterMaiorRelevanciaProdutos(
+        produtosOrdenados
+      )
 
     const relevanciaLoja =
       loja.relevanciaTexto
 
     /*
-      A relevância principal é a melhor
-      correspondência encontrada entre
-      loja e produto.
+      A relevância final da loja é a
+      melhor correspondência entre:
+
+      - dados da própria loja;
+      - produtos encontrados.
     */
     const relevanciaTotal =
-      Math.max(
+      obterRelevanciaTotal(
         relevanciaLoja,
         relevanciaProdutos
       )
@@ -608,7 +394,7 @@ export async function buscarResultados({
   */
   resultados.sort(
     (a, b) =>
-      compararResultados(
+      compararResultadosBusca(
         a,
         b,
         intencao
