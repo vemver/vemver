@@ -494,51 +494,47 @@ Entretanto, políticas específicas devem ser auditadas por tabela antes de sere
 
 # 32. Busca Inteligente
 
-A descoberta inteligente é um dos principais fluxos da arquitetura.
+A descoberta inteligente é um dos principais fluxos da arquitetura do VemVer.
+
+A versão atual permite recuperar resultados através de dados da própria loja e também através de produtos associados às lojas.
 
 Fluxo atual:
 
-```text
-USUÁRIO
-   ↓
-MENSAGEM EM LINGUAGEM NATURAL
-   ↓
-/api/entender-intencao
-   ↓
-OPENAI
-   ↓
-INTENÇÃO ESTRUTURADA
-   ↓
-buscarLojas()
-   ↓
-SUPABASE
-   ↓
-CANDIDATOS
-   ↓
-RANKING
-   ↓
-RESULTADOS
-```
+1. O usuário envia uma mensagem em linguagem natural.
+2. `/api/entender-intencao` valida a requisição.
+3. A OpenAI interpreta a mensagem e retorna uma intenção estruturada.
+4. O backend constrói os critérios de busca.
+5. As buscas de lojas e produtos consultam suas respectivas RPCs em paralelo.
+6. Os candidatos passam pela barreira de contexto.
+7. Os produtos compatíveis são agrupados por loja.
+8. O backend calcula a relevância e aplica o ranking.
+9. Os resultados são retornados.
+
+O ranking prioriza relevância, depois distância quando solicitada, score e nome como desempate.
 
 ---
 
 # 33. Módulos da Busca Inteligente
 
-A lógica está organizada principalmente em:
+A lógica da Busca Inteligente está concentrada principalmente em:
 
 ```text
 src/app/lib/ia/
 ```
 
-com arquivos como:
+Entre os módulos envolvidos estão:
 
-```text
-entenderIntencao.ts
+- `entenderIntencao.ts`: interpretação da mensagem em intenção estruturada;
+- `buscarLojas.ts`: orquestração da busca;
+- `calcularDistancia.ts`: cálculo de distância geográfica.
 
-buscarLojas.ts
+As regras determinísticas de critérios, contexto e ranking possuem cobertura nos arquivos:
 
-calcularDistancia.ts
-```
+- `criteriosBusca.test.ts`;
+- `regrasContextoBusca.test.ts`;
+- `regrasRankingBusca.test.ts`.
+
+A interpretação por IA e as regras determinísticas do backend possuem responsabilidades separadas.
 
 ---
 
@@ -550,19 +546,16 @@ Responsável por transformar linguagem natural em estrutura conhecida.
 
 # 35. Estrutura de Intenção
 
-A estrutura atual possui conceitos como:
+A interpretação atual produz uma estrutura tipada equivalente a:
 
 ```text
 termoBusca
-
 categoria
-
+termosRelacionados[]
+termosContexto[]
 delivery
-
 abertoAgora
-
 pertoDeMim
-
 preco
 ```
 
@@ -674,11 +667,34 @@ Os dados originais permanecem corretamente acentuados.
 
 # 44. Critérios de Busca
 
-A busca atual considera principalmente:
+Os critérios utilizados pela Busca Inteligente são construídos no backend a partir da intenção estruturada.
 
-- nome;
-- categoria;
-- descrição.
+A fonte principal continua sendo:
+
+```text
+termoBusca
+```
+
+A intenção também fornece categoria, termos relacionados e termos de contexto para o processamento da busca.
+
+A construção dos critérios deve:
+
+- preservar expressões compostas e palavras significativas;
+- evitar critérios artificiais derivados apenas de palavras genéricas;
+- evitar duplicidades semânticas entre termos equivalentes.
+
+Exemplos protegidos pelos testes:
+
+| Entrada | Comportamento esperado |
+| --- | --- |
+| `loja` | Não gerar critérios artificiais |
+| `loja de iphone` | Preservar `iphone` |
+| `iphone pro` | Preservar a expressão composta e palavras significativas |
+| Termos equivalentes | Não gerar duplicidades semânticas |
+
+A barreira de contexto verifica a compatibilidade dos candidatos com a intenção.
+
+Um produto compatível pode confirmar o contexto de uma loja mesmo quando os dados gerais dela não possuem correspondência suficiente.
 
 ---
 
@@ -696,57 +712,79 @@ Também existe normalização textual para:
 
 # 46. Relevância Textual
 
-O backend calcula relevância de acordo com correspondências.
+A Busca Inteligente calcula relevância textual separadamente para lojas e produtos.
 
-Conceitualmente:
+A relevância de uma loja considera principalmente:
 
-```text
-NOME EXATO
-→ muito forte
+- nome;
+- categoria;
+- descrição.
 
-NOME COMEÇA COM
-→ forte
+A relevância de um produto considera principalmente:
 
-NOME CONTÉM
-→ relevante
+- nome;
+- categoria;
+- marca;
+- descrição.
 
-CATEGORIA EXATA
-→ forte
+Correspondências diretas no nome do produto recebem maior peso, conforme os valores da seção 47.
 
-CATEGORIA CONTÉM
-→ relevante
+Após a verificação de contexto, os produtos compatíveis são agrupados por loja.
 
-DESCRIÇÃO CONTÉM
-→ sinal complementar
-```
+A relevância dos produtos de uma loja corresponde à maior relevância encontrada entre esses produtos. As relevâncias de todos os produtos não são somadas.
+
+A relevância total da loja corresponde ao maior valor entre sua relevância própria e a relevância de seus produtos compatíveis.
+
+Assim, uma loja pode ser encontrada por um produto relevante, sem receber vantagem artificial apenas por possuir mais produtos cadastrados.
 
 ---
 
 # 47. Pesos Atuais de Relevância
 
-A implementação atual utiliza pesos equivalentes a:
+Os pesos atuais são diferentes para lojas e produtos.
 
-```text
-nome exato
-+100
+## Lojas
 
-nome começa com
-+80
+A implementação atual utiliza:
 
-nome contém
-+60
+| Correspondência | Peso |
+| --- | ---: |
+| Nome exato | +100 |
+| Nome começa com | +80 |
+| Nome contém | +60 |
+| Categoria exata | +90 |
+| Categoria contém | +70 |
+| Descrição contém | +25 |
 
-categoria exata
-+90
+## Produtos
 
-categoria contém
-+70
+A implementação atual utiliza:
 
-descrição contém
-+25
-```
+| Correspondência | Peso |
+| --- | ---: |
+| Nome exato | +140 |
+| Nome começa com | +115 |
+| Nome contém | +95 |
+| Categoria exata | +85 |
+| Categoria contém | +65 |
+| Marca exata | +75 |
+| Marca contém | +55 |
+| Descrição contém | +30 |
 
-Esses valores podem evoluir conforme testes reais.
+Os pesos de produtos dão força maior a correspondências diretas no nome do item.
+
+Isso permite que uma busca específica como `iphone` encontre uma loja através de um produto compatível, mesmo quando os dados gerais da loja possuem correspondência textual menor.
+
+Esses pesos fazem parte da implementação atual, mas não devem ser tratados como valores imutáveis.
+
+Qualquer alteração futura precisa preservar os princípios de:
+
+- relevância primeiro;
+- correspondência direta mais forte;
+- monetização não supera irrelevância;
+- quantidade de produtos não soma relevância.
+
+Mudanças nesses valores devem ser acompanhadas por testes de regressão e validação funcional da qualidade dos resultados.
 
 ---
 
@@ -807,17 +845,30 @@ a distância participa do ranking depois da relevância textual.
 
 # 53. Ranking
 
-Ordem atual:
+O ranking final da Busca Inteligente é determinístico e controlado pelo backend.
 
-```text
-1. relevância textual
+Cada loja pode possuir três valores relacionados à relevância:
 
-2. distância quando proximidade foi solicitada
+| Valor | Significado |
+| --- | --- |
+| `relevanciaLoja` | Relevância calculada a partir dos dados da própria loja |
+| `relevanciaProdutos` | Maior relevância encontrada entre os produtos compatíveis da loja |
+| `relevanciaTotal` | Maior valor entre `relevanciaLoja` e `relevanciaProdutos` |
 
-3. score
+A relevância dos produtos não corresponde à soma das relevâncias de todos os produtos cadastrados.
 
-4. nome
-```
+A ordem do ranking é:
+
+1. Relevância total, da maior para a menor.
+2. Distância, da menor para a maior, somente quando `pertoDeMim = true`.
+3. Score, do maior para o menor.
+4. Nome, como critério de desempate.
+
+A ausência de coordenadas não deve excluir uma loja relevante.
+
+O score participa depois da relevância e da distância quando solicitada. Monetização não deve superar irrelevância.
+
+As regras determinísticas de ranking possuem cobertura em `regrasRankingBusca.test.ts`.
 
 ---
 
@@ -2312,16 +2363,121 @@ Production quando apropriado
 
 # 189. Testes Automatizados
 
-A suíte automatizada ainda deverá evoluir.
+O projeto possui atualmente uma suíte automatizada baseada em Vitest.
 
-Prioridades arquiteturais incluem:
+Os comandos disponíveis são:
 
-- busca;
-- ranking;
-- APIs;
-- autorização;
-- crons;
-- pagamentos.
+```text
+npm test
+npm run test:watch
+```
+
+A Busca Inteligente possui atualmente 26 testes automatizados distribuídos em três arquivos:
+
+```text
+criteriosBusca.test.ts
+→ 7 testes
+
+regrasContextoBusca.test.ts
+→ 8 testes
+
+regrasRankingBusca.test.ts
+→ 11 testes
+```
+
+## Critérios de busca
+
+Os testes protegem regras como:
+
+```text
+"loja"
+→ não gerar critérios artificiais
+
+"loja de iphone"
+→ preservar iphone
+
+"iphone pro"
+→ preservar expressão composta e palavras significativas
+
+termos equivalentes
+→ não gerar duplicidades semânticas
+```
+
+## Contexto
+
+Os testes protegem a barreira responsável por impedir falsos positivos.
+
+Exemplos cobertos:
+
+```text
+assistência notebook
++
+contexto de eletrônicos
+→ candidato compatível
+```
+
+e:
+
+```text
+assistência geladeira
++
+loja apenas de eletrônicos/computadores
+→ candidato incompatível
+```
+
+Também existe cobertura para o caso em que um produto válido confirma o contexto mesmo quando os dados gerais da loja não possuem correspondência suficiente.
+
+## Ranking
+
+Os testes protegem a ordem arquitetural:
+
+```text
+1. relevância
+
+2. distância
+   somente quando pertoDeMim = true
+
+3. score
+
+4. nome
+```
+
+Também protegem a regra:
+
+```text
+relevanciaProdutos =
+maior relevanciaTexto encontrada
+```
+
+e não:
+
+```text
+soma da relevância de todos os produtos
+```
+
+Assim, quantidade de produtos cadastrados não deve gerar vantagem artificial no ranking.
+
+## Limites atuais da suíte
+
+A existência desses testes não significa que toda a aplicação já possui cobertura automatizada.
+
+Ainda precisam evoluir testes relacionados a:
+
+```text
+Route Handlers / APIs
+
+autorização
+
+crons
+
+pagamentos
+
+integrações
+
+fluxos completos de frontend
+```
+
+As regras determinísticas críticas da Busca Inteligente devem permanecer isoladas sempre que possível para que possam ser testadas sem depender diretamente de OpenAI, Supabase ou serviços externos.
 
 ---
 
@@ -2553,29 +2709,62 @@ lint legado
 
 # 206. Arquitetura da Descoberta
 
-```text
-PERGUNTA DO USUÁRIO
-        ↓
-VALIDAÇÃO DA API
-        ↓
-OPENAI
-        ↓
-INTENÇÃO ESTRUTURADA
-        ↓
-CRITÉRIOS NORMALIZADOS
-        ↓
-RPC DE BUSCA
-        ↓
-CANDIDATOS
-        ↓
-RELEVÂNCIA
-        ↓
-DISTÂNCIA
-        ↓
-SCORE
-        ↓
-RESULTADOS
+A descoberta combina candidatos encontrados pelos dados das lojas e pelos produtos associados a elas.
+
+A OpenAI interpreta a pergunta. O backend controla as consultas, a validação de contexto e a ordenação dos resultados.
+
+```mermaid
+flowchart TD
+    A["Pergunta do usuário"] --> B["Validação da API"]
+    B --> C["OpenAI: interpretação"]
+    C --> D["Intenção estruturada"]
+    D --> E["Critérios normalizados"]
+    E --> F["RPC de lojas"]
+    E --> G["RPC de produtos"]
+    F --> H["Candidatos e barreira de contexto"]
+    G --> H
+    H --> I["Agrupamento dos produtos por loja"]
+    I --> J["Relevância por loja"]
+    J --> K["Ranking determinístico"]
+    K --> L["Resultados"]
 ```
+
+## Recuperação e contexto
+
+As consultas de lojas e produtos são executadas em paralelo.
+
+A barreira de contexto verifica a compatibilidade dos candidatos com a intenção e impede que correspondências textuais fora do contexto produzam falsos positivos.
+
+Um produto compatível pode confirmar o contexto de uma loja mesmo quando seus dados gerais não possuem correspondência suficiente.
+
+Os produtos compatíveis são agrupados por loja para compor os resultados.
+
+## Relevância
+
+| Valor | Composição |
+| --- | --- |
+| `relevanciaLoja` | Relevância textual dos dados da loja |
+| `relevanciaProdutos` | Maior relevância textual entre os produtos compatíveis da loja |
+| `relevanciaTotal` | Maior valor entre `relevanciaLoja` e `relevanciaProdutos` |
+
+A quantidade de produtos não soma relevância nem deve gerar vantagem artificial.
+
+Os campos considerados e os pesos estão descritos nas seções 46 e 47.
+
+## Ordenação
+
+O backend aplica a seguinte ordem:
+
+1. Relevância total, da maior para a menor.
+2. Distância, da menor para a maior, somente quando `pertoDeMim = true`.
+3. Score, do maior para o menor.
+4. Nome, como critério de desempate.
+
+A ausência de coordenadas não deve excluir uma loja relevante.
+
+O score não supera a relevância. A OpenAI não decide diretamente a ordem final dos resultados.
+
+As regras de ranking estão detalhadas na seção 53, e a cobertura automatizada está descrita na seção 189.
 
 ---
 
